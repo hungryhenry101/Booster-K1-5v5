@@ -1,0 +1,14 @@
+.vscode
+.DS_Store
+.cache
+
+*.log
+build
+log
+install
+brain_local.yaml
+build_image
+build_ros2
+dist
+
+src/brain/config/config.yaml

@@ -1,0 +1,132 @@
+brain_node:
+  ros__parameters:
+    game:
+      team_id: 0 # TODO: 必须修改！与 GameControl 的 team_id 保持一致 (有效值：1-255)
+      player_id: 0 # TODO: 必须修改！1 | 2 | 3 | 4 | 5
+      field_type: "adult_size" # adult_size | kid_size | robo_league
+      player_role: "TODO" # TODO: 必须修改！striker | goal_keeper
+      player_start_pos: "right" # right | left
+      treat_person_as_robot: false # 是否将人类视为机器人, 用于调试. !!!! 正式比赛时, 必须设置为 false !!!!
+      number_of_players: 5
+    
+    ball_predictor: 
+      step_interval: 100. 
+      step_cnt: 50 
+      linear_steps: 5 
+      linear_rsq_threshold: 0.98 
+      acceleration: -0.4 
+      
+    robot:
+      robot_height: 0.90 
+      odom_factor: 1.2 
+      vx_factor: 0.90 
+      yaw_offset: 0.0 
+      vx_limit: 1.2 
+      vy_limit: 0.5 
+      vtheta_limit: 1.5 
+
+    strategy:
+      ball_confidence_threshold: 30.0 
+      ball_confidence_decay_rate: 3.0 
+      enable_stable_kick: false 
+      ball_memory_timeout: 3.0 
+      tm_ball_dist_threshold: 1.5  
+      limit_near_ball_speed: false 
+      near_ball_speed_limit: 0.6 
+      near_ball_range: 2.0 
+      soft_kickoff: false 
+      soft_kickoff_speed: 0.3 
+      kick_range: 1.0 
+      kick_theta_range: 0.2 
+      abort_kick_when_ball_moved: true 
+      abort_kick_ball_move_threshold: 0.3 
+      abort_shoot_when_ball_moved: true  
+      limit_speed_near_border: false 
+      near_border_speed_limit: 0.5
+      near_border_dist_threshold: -1.0 
+      enable_bypass: false 
+      enable_shoot: false 
+      enable_directional_kick: false 
+      use_squat_block: true 
+      squat_block_msecs: 2000.0 
+      use_move_block: false 
+      move_block_msecs: 2000.0 
+      shoot:
+        threat_threshold: -2.0 
+        xmin: 0.3
+        xmax: 0.6
+        ymin: -0.3
+        ymax: 0.3
+
+      power_shoot:
+        enable: false 
+        use_for_kickoff: false 
+        xmin: 1.1 
+        xmax: 1.5 
+        ymin: -0.3 
+        ymax: 0.3 
+      enable_auto_visual_defend: false 
+      cooperation:
+        enable_role_switch: true 
+        ball_control_cost_threshold: 5.0 
+
+    obstacle_avoidance:
+      depth_sample_step: 16 
+      obstacle_min_height: 0.3 
+      grid_size: 0.2 
+      max_x: 3.0 
+      max_y: 5.0 
+      exclusion_x: 0.4 
+      exclusion_y: 0.5 
+      ball_exclusion_radius: 0.0 
+      ball_exclusion_height: 0.3 
+      occupancy_threshold: 8 
+      collision_threshold: 0.3 
+      safe_distance: 1.0 
+      avoid_secs: 2.0 
+      enable_freekick_avoid: true 
+      freekick_start_placing_safe_distance: 0.5 
+      freekick_start_placing_avoid_secs: 1.5 
+      obstacle_memory_msecs: 500. 
+      avoid_during_kick: false 
+      kick_ao_safe_dist: 1.5 
+      kick_ao_use_shoot: false 
+      avoid_during_chase: true 
+      chase_ao_safe_dist: 1.5 
+      always_turn_left: false 
+
+    locator:
+      min_marker_count: 3 
+      max_residual: 0.25 
+
+    enable_com: False  # 是否开启队友间通信
+
+    rerunLog:
+      enable_tcp: false # 是否通过网络传输 log
+      server_ip: "192.168.10.110:9876" # 开启了 rerun Viewer 的机器地址
+      enable_file: false # 是否将 log 写入本地
+      log_dir: "/home/booster/Workspace/rrlog" # 本地 log 存储路径, 会在此路径下生成以时间为开头的文件
+      max_log_file_mins: 5.0 # 本地 log 最长多少分钟就分片存储. 太大的文件会导致读的时候死机.
+      img_interval: 1 #每多少帧图像 log 一次, 如果希望更好的实时性或减少日志大小, 可以调高这个值. 但会造成 log 的时间精度降低.
+    
+    recovery:
+      retry_max_count: 2
+
+    vision:
+      image_topic: "/camera/camera/color/image_raw" 
+      depth_image_topic: "/camera/camera/aligned_depth_to_color/image_raw" 
+      cam_pixel_width: 1280. 
+      cam_pixel_height: 720. 
+      cam_fov_x: 90.0 
+      cam_fov_y: 60.0 
+    
+
+    debug:
+      log_ball_pos: false # 是否记录球位置到 ballpos.log 中, 用于调试
+    
+    game_control_ip: "TODO" # TODO: 必须修改！裁判机的 IP 地址
+
+    # for fun
+    sound:
+      enable: true 
+      sound_pack: "espeak" 
