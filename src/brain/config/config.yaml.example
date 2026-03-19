@@ -21,8 +21,8 @@ brain_node:
       odom_factor: 1.2 
       vx_factor: 0.90 
       yaw_offset: 0.0 
-      vx_limit: 1.2 
-      vy_limit: 0.5 
+      vx_limit: 1.5 
+      vy_limit: 1.5
       vtheta_limit: 1.5 
 
     strategy:
@@ -99,7 +99,7 @@ brain_node:
       min_marker_count: 3 
       max_residual: 0.25 
 
-    enable_com: False  # 是否开启队友间通信
+    enable_com: True  # 是否开启队友间通信
 
     rerunLog:
       enable_tcp: false # 是否通过网络传输 log
@@ -110,7 +110,7 @@ brain_node:
       img_interval: 1 #每多少帧图像 log 一次, 如果希望更好的实时性或减少日志大小, 可以调高这个值. 但会造成 log 的时间精度降低.
     
     recovery:
-      retry_max_count: 2
+      retry_max_count: 3
 
     vision:
       image_topic: "/camera/camera/color/image_raw" 
