@@ -1,6 +1,6 @@
 # brain_tree.cpp Action Nodes 说明文档
 
-本文档详细说明了 `brain_tree.cpp` 中定义的所有 Action Nodes 的功能、参数和实现逻辑。
+本文档详细说明了 `src/brain/src/brain_tree.cpp` 中定义的所有 Action Nodes 的功能、参数和实现逻辑。
 
 ---
 
