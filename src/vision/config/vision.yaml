@@ -1,29 +1,29 @@
 camera:
   type: realsense
   intrin:
-    fx: 644.520325
-    fy: 643.911743
-    cx: 639.452209
-    cy: 360.286621
+    fx: 647.678284
+    fy: 646.921448
+    cx: 634.852661
+    cy: 362.221649
     distortion_model: 0
     distortion_coeffs:
       []
   extrin:
     -
-      - 0.0233656205
-      - -0.271555126
-      - 0.962139249
-      - -0.0382492319
+      - -0.00624676095
+      - -0.253142178
+      - 0.967408955
+      - -0.0243975222
     -
-      - -0.999640703
-      - 0.00629522745
-      - 0.0260531176
-      - -0.0178505555
+      - -0.999977112
+      - -0.000928782858
+      - -0.00670009525
+      - -0.0409320258
     -
-      - -0.0131317424
-      - -0.962402344
-      - -0.271310449
-      - -0.0297537949
+      - 0.00259458926
+      - -0.967428565
+      - -0.253130555
+      - -0.036067877
     -
       - 0
       - 0
@@ -54,7 +54,6 @@ segmentation_model:
   confidence_threshold: 0.3
   nms_threshold: 0.9
 use_depth: true
-
 ball_pose_estimator:
   use_depth: false
   radius: 0.091
@@ -79,9 +78,7 @@ calibration:
     zero_translation: true
     field_marker_path: ./src/vision/config/field.yaml
   handeye:
-    calibration_time: 2026-01-13-21-21-38
-    reprojection_error: 5.2691193691832403
+    calibration_time: 2026-03-21-11-20-05
+    reprojection_error: 2.3121936413291029
 misc:
   save_data_nonstationary: true
-
-
