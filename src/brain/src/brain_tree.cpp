@@ -988,7 +988,7 @@ NodeStatus StrikerDecide::tick() {
         else { // kickType == kick
             double threatThreshold;
             brain->get_parameter("strategy.shoot.threat_threshold", threatThreshold);
-            if (threatLevel < threatThreshold) newDecision = "safe_shoot";
+            if (threatLevel < threatThreshold) newDecision = "safe_shoot"; // 不会出现 safe_shoot 因为 yaml 中 threatThreshold 是 -2
             else newDecision = "kick";
         }        
         color = 0x00FF00FF;
