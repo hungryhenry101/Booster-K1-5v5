@@ -33,6 +33,13 @@ def make_scripts_executable():
                     os.chmod(filepath, 0o755)
                 except Exception:
                     pass
+                
+    calib_script = os.path.join(script_dir, "calibration.sh")
+    try:
+        os.chmod(calib_script, 0o755)
+        print("chmoded calib script")
+    except Exception:
+        print("couldn't chmod calib script")
 
 
 def print_current_config(config_content):
