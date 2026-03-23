@@ -2,6 +2,7 @@
 #include <string>
 #include <fstream>  // 添加这一行
 #include <yaml-cpp/yaml.h>  // 添加这一行
+#include <cmath>
 
 #include "brain.h"
 #include "utils/print.h"
@@ -2942,11 +2943,47 @@ void Brain::statusReport() {
 }
 
 void Brain::logStatusToConsole() {
+    // 静态信息只在启动时打印一次
+    static bool staticInfoPrinted = false;
+    if (!staticInfoPrinted) {
+        string staticMsg = format(
+            "ROBOT:\n\tTeamID: %d\tPlayerID: %d\tNumberOfPlayers: %d\tRole: %s\tStartRole: %s\n\n"
+            "DEBUG_CONFIG:\n\tcom: %s\tlogFile: %s\tlogTCP: %s\n\tvxFactor: %.2f\tyawOffset: %.2f",
+            config->teamId,
+            config->playerId,
+            config->numOfPlayers,
+            tree->getEntry<string>("player_role").c_str(),
+            config->playerRole.c_str(),
+            config->enableCom ? "YES" : "NO",
+            config->rerunLogEnableFile ? "YES" : "NO",
+            config->rerunLogEnableTCP ? "YES" : "NO",
+            config->vxFactor,
+            config->yawOffset
+        );
+        prtDebug(staticMsg);
+        staticInfoPrinted = true;
+    }
+
+    // 动态状态信息每 30 个 tick 打印一次，只打印变化的量
     static int cnt = 0;
     const int LOG_INTERVAL = 30;
+
+    // 上次打印的状态，用于比较是否有变化
+    static string lastGameState = "";
+    static string lastGameSubType = "";
+    static string lastGameSubState = "";
+    static int lastScore = -1;
+    static int lastOppoScore = -1;
+    static int lastLiveCount = -1;
+    static int lastOppoLiveCount = -1;
+    static bool lastPrimary = false;
+    static int lastCmdId = -1;
+    static double lastCost = -1;
+    static bool lastImLead = false;
+    static int lastCtrlState = -1;
+
     cnt++;
     if (cnt % LOG_INTERVAL == 0) {
-        string msg = "";
         string gameState = tree->getEntry<string>("gc_game_state");
         gameState = gameState == "" ? "-----" : gameState;
         string gameSubType = tree->getEntry<string>("gc_game_sub_state_type");
@@ -2954,47 +2991,103 @@ void Brain::logStatusToConsole() {
         string gameSubState = tree->getEntry<string>("gc_game_sub_state");
         gameSubState = gameSubState == "" ? "-----" : gameSubState;
 
-        msg += format(
-            "ROBOT:\n\tTeamID: %d\tPlayerID: %d\tNumberOfPlayers: %d\tRole: %s\tStartRole: %s\n\n",
-            config->teamId,
-            config->playerId,
-            config->numOfPlayers,
-            tree->getEntry<string>("player_role").c_str(),
-            config->playerRole.c_str()
-        );
-        msg += format(
-            "GAME:\n\tState: %s\tKickOffSide: %s\tisKickingOff: %s(%s)\n\tSubType: %s\tSubState: %s\tSubKickOffSide: %s\tisKickingOff: %s(%s)\n\tScore: %s\tJustScored: %s\n\tLiveCount: %d\tOppoLiveCount: %d\tPrimary: %s\n\n", 
-            gameState.c_str(), 
-            tree->getEntry<bool>("gc_is_kickoff_side") ? "YES" : "NO",
-            data->isKickingOff ? "YES" : "NO",
-            msecsSince(data->kickoffStartTime)/1000 > 100 ? "--" : to_string(msecsSince(data->kickoffStartTime)/1000).c_str(),
-            gameSubType.c_str(),
-            gameSubState.c_str(),
-            tree->getEntry<bool>("gc_is_sub_state_kickoff_side") ? "YES" : "NO",
-            data->isFreekickKickingOff ? "YES" : "NO",
-            msecsSince(data->freekickKickoffStartTime)/1000 > 100 ? "--" : to_string(msecsSince(data->freekickKickoffStartTime)/1000).c_str(),
-            format("%d:%d", data->score, data->oppoScore).c_str(),
-            tree->getEntry<bool>("we_just_scored") ? "YES" : "NO",
-            data->liveCount,
-            data->oppoLiveCount,
-            isPrimaryStriker() ? "YES" : "NO"
-        );
-        
-        msg += getComLogString();
+        int score = data->score;
+        int oppoScore = data->oppoScore;
+        int liveCount = data->liveCount;
+        int oppoLiveCount = data->oppoLiveCount;
+        bool primary = isPrimaryStriker();
+        int cmdId = data->tmCmdId;
+        double cost = data->tmMyCost;
+        bool imLead = data->tmImLead;
+        int ctrlState = tree->getEntry<int>("control_state");
+        int tickTime = (int)msecsSince(data->lastTick);
 
-        msg += format(
-            "DEBUG:\n\tcom: %s\tlogFile: %s\tlogTCP: %s\n\tvxFactor: %.2f\tyawOffset: %.2f\n\tControlState: %d\n\tTickTime: %.0fms",
-            config->enableCom ? "YES" : "NO",
-            config->rerunLogEnableFile ? "YES" : "NO",
-            config->rerunLogEnableTCP ? "YES" : "NO",
-            config->vxFactor,
-            config->yawOffset,
-            tree->getEntry<int>("control_state"),
-            msecsSince(data->lastTick)
-        );
-        prtDebug(msg);
+        // 检查是否有变化
+        bool hasChange = (gameState != lastGameState) ||
+                         (gameSubType != lastGameSubType) ||
+                         (gameSubState != lastGameSubState) ||
+                         (score != lastScore) ||
+                         (oppoScore != lastOppoScore) ||
+                         (liveCount != lastLiveCount) ||
+                         (oppoLiveCount != lastOppoLiveCount) ||
+                         (primary != lastPrimary) ||
+                         (cmdId != lastCmdId) ||
+                         (imLead != lastImLead) ||
+                         (ctrlState != lastCtrlState);
+
+        // 成本变化超过阈值也算变化
+        if (!hasChange && fabs(cost - lastCost) > 0.05) hasChange = true;
+
+        if (hasChange) {
+            vector<string> changes;
+
+            // 游戏状态变化
+            string gameInfo = "";
+            if (gameState != lastGameState) gameInfo += format("State=%s ", gameState.c_str());
+            if (score != lastScore || oppoScore != lastOppoScore) gameInfo += format("Score=%d:%d ", score, oppoScore);
+            if (liveCount != lastLiveCount || oppoLiveCount != lastOppoLiveCount) gameInfo += format("Live=%d:%d ", liveCount, oppoLiveCount);
+            if (primary != lastPrimary) gameInfo += format("Primary=%s ", primary ? "YES" : "NO");
+            if (!gameInfo.empty()) changes.push_back("GAME: " + gameInfo);
+
+            // 子状态变化
+            string subInfo = "";
+            if (gameSubType != lastGameSubType) subInfo += format("SubType=%s ", gameSubType.c_str());
+            if (gameSubState != lastGameSubState) subInfo += format("SubState=%s ", gameSubState.c_str());
+            if (!subInfo.empty()) changes.push_back("SUB: " + subInfo);
+
+            // 通信状态变化
+            string comInfo = format("Cost=%.1f Lead=%s CmdId=%d", cost, imLead ? "YES" : "NO", cmdId);
+            changes.push_back("COM: " + comInfo);
+
+            // 控制状态变化
+            if (ctrlState != lastCtrlState) changes.push_back(format("CtrlState=%d", ctrlState));
+
+            // Tick 时间始终打印
+            changes.push_back(format("Tick=%dms", tickTime));
+
+            // 组装消息
+            string msg = "";
+            for (size_t i = 0; i < changes.size(); i++) {
+                if (i > 0) msg += "  |  ";
+                msg += changes[i];
+            }
+            prtDebug(msg);
+        }
+
+        // 更新上次状态
+        lastGameState = gameState;
+        lastGameSubType = gameSubType;
+        lastGameSubState = gameSubState;
+        lastScore = score;
+        lastOppoScore = oppoScore;
+        lastLiveCount = liveCount;
+        lastOppoLiveCount = oppoLiveCount;
+        lastPrimary = primary;
+        lastCmdId = cmdId;
+        lastCost = cost;
+        lastImLead = imLead;
+        lastCtrlState = ctrlState;
     }
     data->lastTick = get_clock()->now();
+}
+
+string Brain::getComLogStringBrief() {
+    // 简洁版通信日志，只输出关键信息
+    stringstream ss;
+    int aliveCnt = 0;
+    int selfIdx = config->playerId - 1;
+    for (int i = 0; i < HL_MAX_NUM_PLAYERS; i++) {
+        if (i == selfIdx) continue;
+        if (data->tmStatus[i].isAlive) aliveCnt += 1;
+    }
+    ss << format("Alive: %d/%d  Cost: %.1f  Lead: %s  LastCmdChange: %.0fms ago",
+        aliveCnt,
+        config->numOfPlayers - 1,
+        data->tmMyCost,
+        data->tmImLead ? "YES" : "NO",
+        msecsSince(data->tmLastCmdChangeTime)
+    );
+    return ss.str();
 }
 
 string Brain::getComLogString() {

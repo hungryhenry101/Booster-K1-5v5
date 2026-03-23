@@ -330,6 +330,7 @@ private:
     void statusReport();
     void logStatusToConsole();
     string getComLogString(); // 将多机通讯信息打印到 console, 可以在 brain.log 中查看
+    string getComLogStringBrief(); // 简洁版通信日志，用于频繁的控制台输出
     void playSoundForFun();
     std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
 };

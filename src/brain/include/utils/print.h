@@ -1,8 +1,22 @@
 #pragma once
 
 #include <string>
+#include <chrono>
+#include <iomanip>
+#include <sstream>
 
 using namespace std;
+
+// 获取当前时间戳字符串 [HH:MM:SS.mmm]
+inline string get_timestamp() {
+    auto now = chrono::system_clock::now();
+    auto time = chrono::system_clock::to_time_t(now);
+    auto ms = chrono::duration_cast<chrono::milliseconds>(now.time_since_epoch()) % 1000;
+
+    stringstream ss;
+    ss << "[" << put_time(localtime(&time), "%H:%M:%S") << "." << setfill('0') << setw(3) << ms.count() << "]";
+    return ss.str();
+}
 
 /* ------------------------------------ ANSI COLOR CODES ------------------------------------ */
 
@@ -76,7 +90,7 @@ inline string prettyPrint(const string &str, const string &title = "", const str
         headerHalfLength = 0;
     string header = string(headerHalfLength, borderChar);
     string footer = string(borderLength, borderChar);
-    cout << colorCode
+    cout << colorCode << get_timestamp()
          << header << " " << title << " " << header << "\n\n"
          << str << "\n\n"
          << footer 
