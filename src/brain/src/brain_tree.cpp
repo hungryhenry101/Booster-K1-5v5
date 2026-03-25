@@ -30,12 +30,13 @@ void BrainTree::init()
     BehaviorTreeFactory factory;
 
     // Action Nodes
-
     REGISTER_BUILDER(RobotFindBall)
     REGISTER_BUILDER(Chase)
     REGISTER_BUILDER(SimpleChase)
     REGISTER_BUILDER(Adjust)
     REGISTER_BUILDER(Kick)
+    REGISTER_BUILDER(DribbleKick)
+    REGISTER_BUILDER(PowerKick)
     REGISTER_BUILDER(StandStill)
     REGISTER_BUILDER(CalcKickDir)
     REGISTER_BUILDER(StrikerDecide)
@@ -975,7 +976,7 @@ NodeStatus StrikerDecide::tick() {
     } 
     else if (
         (
-            (angleGoodForKick && !brain->data->isFreekickKickingOff) 
+            (angleGoodForKick && !brain->data->isFreekickKickingOff)
             || reachedKickDir
         )
         && !avoidKick
@@ -985,12 +986,12 @@ NodeStatus StrikerDecide::tick() {
     )
     {
         if (brain->data->kickType == "cross") newDecision = "cross";
-        else { // kickType == kick
-            double threatThreshold;
-            brain->get_parameter("strategy.shoot.threat_threshold", threatThreshold);
-            if (threatLevel < threatThreshold) newDecision = "safe_shoot"; // 不会出现 safe_shoot 因为 yaml 中 threatThreshold 是 -2
-            else newDecision = "kick";
-        }        
+        else { // kickType == kick - 根据 threatLevel 选择诱导-摆脱踢球策略
+            // threatLevel: 0=安全 (>1.5m), 1=威胁 (<1.5m), 2=危险 (<0.8m)
+            if (threatLevel == 0.0) newDecision = "dribble";       // 安全：小步慢带球，精细控球
+            else if (threatLevel == 2.0) newDecision = "power_kick";     // 危险：大步趟球，立即加速
+            else newDecision = "kick"; // 威胁：正常踢球
+        }
         color = 0x00FF00FF;
         brain->data->isFreekickKickingOff = false; // 只要进一次 kick, 就不算是 kickoff 阶段了.
     }
@@ -1004,8 +1005,8 @@ NodeStatus StrikerDecide::tick() {
     brain->log->logToScreen(
         "tree/Decide",
         format(
-            "Decision: %s ballrange: %.2f ballyaw: %.2f kickDir: %.2f rbDir: %.2f angleGoodForKick: %d angleGoodForShoot: %d lead: %d", 
-            newDecision.c_str(), ballRange, ballYaw, kickDir, dir_rb_f, angleGoodForKick, angleGoodForShoot, brain->data->tmImLead
+            "Decision: %s (threat: %.1f) ballrange: %.2f ballyaw: %.2f kickDir: %.2f rbDir: %.2f angleGoodForKick: %d angleGoodForShoot: %d lead: %d",
+            newDecision.c_str(), threatLevel, ballRange, ballYaw, kickDir, dir_rb_f, angleGoodForKick, angleGoodForShoot, brain->data->tmImLead
         ),
         color
     );
@@ -1267,6 +1268,114 @@ NodeStatus Kick::onRunning()
 void Kick::onHalted()
 {
     _startTime -= rclcpp::Duration(100, 0);
+}
+
+// ==================== DribbleKick 实现 ====================
+// 小步慢带球：用于低威胁情况下的精细控球
+NodeStatus DribbleKick::onStart()
+{
+    _startTime = brain->get_clock()->now();
+    _lastAdjustTime = _startTime;
+    _dribbleSpeed = getInput<double>("dribble_speed").value_or(0.3);
+    _adjustInterval = getInput<double>("adjust_interval").value_or(100);
+    _maxDribbleDist = getInput<double>("max_dribble_dist").value_or(0.5);
+    _startBallRange = brain->data->ball.range;
+
+    // 初始 CrabWalk
+    double angle = brain->data->ball.yawToRobot;
+    brain->client->crabWalk(angle, _dribbleSpeed);
+
+    return NodeStatus::RUNNING;
+}
+
+NodeStatus DribbleKick::onRunning()
+{
+    auto now = brain->get_clock()->now();
+    auto ballRange = brain->data->ball.range;
+
+    // 如果球已经超出控制范围，结束
+    if (ballRange > _maxDribbleDist) {
+        brain->client->setVelocity(0, 0, 0);
+        return NodeStatus::SUCCESS;
+    }
+
+    // 如果球丢失，结束
+    const double BALL_LOST_THRESHOLD = 1000;  // ms
+    if (!brain->data->ballDetected || brain->msecsSince(brain->data->ball.timePoint) > BALL_LOST_THRESHOLD) {
+        brain->client->setVelocity(0, 0, 0);
+        return NodeStatus::SUCCESS;
+    }
+
+    // 定期调整方向（每 adjust_interval ms）
+    if (brain->msecsSince(_lastAdjustTime) > _adjustInterval) {
+        double angle = brain->data->ball.yawToRobot;
+        brain->client->crabWalk(angle, _dribbleSpeed);
+        _lastAdjustTime = now;
+    }
+
+    return NodeStatus::RUNNING;
+}
+
+void DribbleKick::onHalted()
+{
+    brain->client->setVelocity(0, 0, 0);
+}
+
+// ==================== PowerKick 实现 ====================
+// 大步趟球：用于高威胁情况下的快速进攻，无稳定后摇
+NodeStatus PowerKick::onStart()
+{
+    _startTime = brain->get_clock()->now();
+    _powerKickSpeed = getInput<double>("power_kick_speed").value_or(1.5);
+    _minMSecKick = getInput<double>("min_msec_kick").value_or(300);
+    _minRange = brain->data->ball.range;
+
+    // 立即以最大速度趟球，无稳定动作
+    double angle = brain->data->ball.yawToRobot;
+    brain->client->crabWalk(angle, _powerKickSpeed);
+
+    return NodeStatus::RUNNING;
+}
+
+NodeStatus PowerKick::onRunning()
+{
+    auto ballRange = brain->data->ball.range;
+    const double KICK_RANGE = 1.0;
+    const double BALL_LOST_THRESHOLD = 1000;  // ms
+
+    // 如果球已经踢远或丢失，结束
+    if (ballRange > KICK_RANGE) {
+        brain->client->setVelocity(0, 0, 0);
+        return NodeStatus::SUCCESS;
+    }
+
+    if (!brain->data->ballDetected || brain->msecsSince(brain->data->ball.timePoint) > BALL_LOST_THRESHOLD) {
+        brain->client->setVelocity(0, 0, 0);
+        return NodeStatus::SUCCESS;
+    }
+
+    // 计算动态踢球时间（距离越远，需要的时间越长）
+    double speed = _powerKickSpeed;
+    if (speed < 0.01) speed = 0.01;
+    double msecKick = _minMSecKick + static_cast<int>(ballRange / speed * 1000);
+
+    if (brain->msecsSince(_startTime) > msecKick) {
+        brain->client->setVelocity(0, 0, 0);
+        return NodeStatus::SUCCESS;
+    }
+
+    // 修正方向（保持对球的控制）
+    if (brain->data->ballDetected) {
+        double angle = brain->data->ball.yawToRobot;
+        brain->client->crabWalk(angle, _powerKickSpeed);
+    }
+
+    return NodeStatus::RUNNING;
+}
+
+void PowerKick::onHalted()
+{
+    brain->client->setVelocity(0, 0, 0);
 }
 
 

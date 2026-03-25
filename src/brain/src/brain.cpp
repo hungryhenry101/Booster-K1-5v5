@@ -3210,9 +3210,9 @@ double Brain::threatLevel()
         }
     }
 
-    if (minOpponentDist < 1.0) return 2.0;
-    if (minOpponentDist < 2.5) return 1.0;
-    return 0.0;
+    if (minOpponentDist < 0.8) return 2.0;  // 危险：敌人很近
+    if (minOpponentDist < 1.5) return 1.0;  // 有威胁：敌人在 1.5m 内
+    return 0.0;                              // 安全：敌人在 1.5m 外
 }
 
 /**
