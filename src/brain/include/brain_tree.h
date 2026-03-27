@@ -295,53 +295,6 @@ private:
     tuple<double, double, double> _calcSpeed();
 };
 
-// 小步慢带球节点 - 用于低威胁情况下的精细控球
-class DribbleKick : public StatefulActionNode
-{
-public:
-    DribbleKick(const string &name, const NodeConfig &config, Brain *_brain) : StatefulActionNode(name, config), brain(_brain) {}
-    static PortsList providedPorts() {
-        return {
-            InputPort<double>("dribble_speed", 0.3, "慢带速度"),
-            InputPort<double>("adjust_interval", 100, "方向调整间隔 (ms)"),
-            InputPort<double>("max_dribble_dist", 0.5, "最大带球距离"),
-        };
-    }
-    NodeStatus onStart() override;
-    NodeStatus onRunning() override;
-    void onHalted() override;
-private:
-    Brain *brain;
-    rclcpp::Time _startTime;
-    rclcpp::Time _lastAdjustTime;
-    double _dribbleSpeed;
-    double _adjustInterval;
-    double _maxDribbleDist;
-    double _startBallRange;
-};
-
-// 大步趟球节点 - 用于高威胁情况下的快速进攻
-class PowerKick : public StatefulActionNode
-{
-public:
-    PowerKick(const string &name, const NodeConfig &config, Brain *_brain) : StatefulActionNode(name, config), brain(_brain) {}
-    static PortsList providedPorts() {
-        return {
-            InputPort<double>("power_kick_speed", 1.5, "趟球速度"),
-            InputPort<double>("min_msec_kick", 300, "最小踢球时间"),
-        };
-    }
-    NodeStatus onStart() override;
-    NodeStatus onRunning() override;
-    void onHalted() override;
-private:
-    Brain *brain;
-    rclcpp::Time _startTime;
-    double _powerKickSpeed;
-    int _minMSecKick;
-    double _minRange;
-};
-
 class Shoot : public StatefulActionNode
 {
 public:

@@ -51,18 +51,6 @@ brain_node:
       squat_block_msecs: 2000.0 
       use_move_block: false 
       move_block_msecs: 2000.0 
-
-      # 诱导-摆脱策略
-      progressive_kick:
-        enable: true
-        dribble:
-          speed: 0.3      # 慢带速度 (m/s)
-          adjust_interval: 100  # 方向调整间隔 (ms)
-          max_dist: 0.5   # 最大带球距离 (m)
-        power_kick:
-          speed: 1.5      # 趟球速度 (m/s)
-          min_msec: 300   # 最小踢球时间 (ms)
-
       shoot:
         threat_threshold: -2.0 
         xmin: 0.3

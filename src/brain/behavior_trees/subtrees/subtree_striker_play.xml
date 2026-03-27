@@ -39,9 +39,7 @@
                         <!-- <Adjust2  _while="decision == 'adjust'"  range="0.4" vx_limit="0.4" vy_limit="0.4" vtheta_limit="1.5" /> -->
                         <!-- <Adjust4 _while="decision =='adjust'" turn_threshold="0.5" range="0.5" vx_limit="0.5" vy_limit="0.5" vtheta_limit="1.5" vtheta_factor="1.0" tangential_speed_far="0.7" tangential_speed_near="0.15" /> -->
                         <Adjust _while="decision =='adjust'" turn_threshold="0.5" range="0.4" vx_limit="0.8" vy_limit="0.8" vtheta_limit="1.5" />
-                        <DribbleKick _while="decision == 'dribble'" dribble_speed="0.3" adjust_interval="100" max_dribble_dist="0.5"/>
                         <Kick _while="decision == 'kick'" speed_limit="0.9" min_msec_kick="1000" msecs_stablize="300"/>
-                        <PowerKick _while="decision == 'power_kick'" power_kick_speed="1.5" min_msec_kick="300"/>
                         <Kick _while="decision == 'cross'" speed_limit="0.6" min_msec_kick="600"/>
 
                         <!-- RLVisionKick node removed in open-source version -->
