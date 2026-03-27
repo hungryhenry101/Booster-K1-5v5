@@ -448,7 +448,7 @@ NodeStatus Chase::tick()
         && fabs(ballYaw) < 0.2
         ) vx = min(vx, 0.3); // 避免乌龙, 接近球时, 如果方向不对, 就限制一下速度
 
-    double linearFactor = sigmoid((targetRange * fabs(targetYaw)), 1, 3); // 距离远且角度大时, 减小转弯半径
+    double linearFactor = sigmoid((targetRange * fabs(targetYaw)), 1, 2);
     vx *= linearFactor;
     vy *= linearFactor;
 
