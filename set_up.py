@@ -22,6 +22,25 @@ VALID_PLAYER_IDS = [1, 2, 3, 4, 5]
 VALID_ROLES = ["striker", "goal_keeper"]
 
 
+def copy_latest_vision_config():
+    """复制手眼标定配置文件"""
+    target_config = os.path.join(script_dir, "src", "vision", "config", "vision.yaml")
+    source_config = os.path.join("/opt/booster/vision.yaml")
+
+    if not os.path.exists(source_config):
+        print(f"⚠️  最新标定文件夹中找不到 vision_local.yaml: {source_config}")
+        return
+
+    # 确保目标目录存在
+    target_dir = os.path.dirname(target_config)
+    if not os.path.exists(target_dir):
+        os.makedirs(target_dir)
+
+    import shutil
+    shutil.copy2(source_config, target_config)
+    print(f"✅ 已复制最新手眼标定配置：/opt/booster/vision.yaml → src/vision/config/vision.yaml")
+
+
 def make_scripts_executable():
     """赋予 scripts 目录下所有文件可执行权限"""
     scripts_dir = os.path.join(script_dir, "scripts")
@@ -248,6 +267,10 @@ def main():
     # 首先赋予 scripts 目录下所有文件可执行权限
     make_scripts_executable()
     print("已赋予 scripts 目录下所有文件可执行权限\n")
+
+    # 复制最新的手眼标定配置
+    copy_latest_vision_config()
+    print()
 
     # 从 example 创建 config.yaml（如果不存在）
     create_config_from_example()
