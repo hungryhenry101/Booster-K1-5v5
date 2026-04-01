@@ -483,29 +483,76 @@ void Brain::handleCooperation() {
         tree->setEntry<string>("player_role", config->playerRole);
     }
 
-
+    // ----------------- 多机协作核心量计算 -----------------
+    // tmMinCost:
+    //   当前所有在线队友中，"接近并控制球" 的最小代价(cost)。
+    //   数值越小，代表某个队友越适合去控球。
     double tmMinCost = 1e5;
-    for (int i = 0; i < aliveTmIdxs.size(); i++) {
+
+    // myCostRank:
+    //   有多少个在线队友的 cost 比我更小。
+    //   例如:
+    //   - 0: 我是最优（没有队友比我更容易控球）
+    //   - 1: 有 1 个队友比我更优
+    //   - 2: 至少有 2 个队友比我更优（通常应当主动让位 assist）
+    int myCostRank = 0;
+
+    // myStrikerIDRank:
+    //   在 striker 角色中，按 player_id（即 tmIdx）排序时，我是第几位。
+    //   该值用于 READY/FREE_KICK 等阶段的站位分配，确保不同 striker 落到不同槽位。
+    int myStrikerIDRank = 0;
+
+    // 遍历在线队友，统计三类信息：
+    // 1) 最低控球成本 tmMinCost
+    // 2) 我的成本排名 myCostRank
+    // 3) 我在 striker 集合中的 ID 排名 myStrikerIDRank
+    for (int i = 0; i < aliveTmIdxs.size(); i++)
+    {
         int tmIdx = aliveTmIdxs[i];
         auto tmStatus = data->tmStatus[tmIdx];
-        if (tmStatus.cost < tmMinCost) tmMinCost = tmStatus.cost;
+
+        // 记录在线队友中的最小 cost，用于判断是否存在更优控球者
+        if (tmStatus.cost < tmMinCost)
+            tmMinCost = tmStatus.cost;
+
+        // 统计有多少队友 cost 严格小于我 -> 我的 cost 排名
+        if (tmStatus.cost < data->tmMyCost)
+            myCostRank++;
+
+        // 只在 striker 队友中统计 ID 比我小的人数，用于前锋站位序号
+        if (tmIdx < selfIdx && tmStatus.role == "striker")
+            myStrikerIDRank++;
     }
+
+    // 写回共享状态，供行为树节点（如 GoToReadyPosition / FreekickPosition）使用
+    data->tmMyCostRank = myCostRank;
+    data->myStrikerIDRank = myStrikerIDRank;
+
+    // lead 判定阈值：
+    // 当场上最优队友成本已经很低（< 阈值）时，我们倾向于只保留一个 lead，减少双抢球冲突。
     double BALL_CONTROL_COST_THRESHOLD = 3.0;
     get_parameter("strategy.cooperation.ball_control_cost_threshold", BALL_CONTROL_COST_THRESHOLD);
 
-    if (tmMinCost < BALL_CONTROL_COST_THRESHOLD && data->tmMyCost > tmMinCost) {
-
+    // lead 退让条件（满足任一）：
+    // A. 场上存在“明显更优”的控球队友（tmMinCost 足够小，且我不是最小 cost）
+    // B. 我的成本排名已经>=2（至少有两名队友比我更适合去抢球）
+    // 这两个条件都在降低多人同时上抢导致的干扰和碰撞风险。
+    if (
+        (tmMinCost < BALL_CONTROL_COST_THRESHOLD && data->tmMyCost > tmMinCost) || myCostRank >= 2)
+    {
+        // 我退出 lead，转为辅助角色
         data->tmImLead = false;
         tree->setEntry<bool>("is_lead", false);
         log_("I am not lead");
-
-    } else {
+    }
+    else
+    {
+        // 我保持/成为 lead，负责主要控球推进
         data->tmImLead = true;
         tree->setEntry<bool>("is_lead", true);
         log_("I am Lead");
     }
-    log_(format("tmMinCost: %.1f, myCost: %.1f", tmMinCost, data->tmMyCost));
-
+    log_(format("tmMinCost: %.1f, myCost: %.1f, myCostRank: %d, myStrikerIDRank: %d", tmMinCost, data->tmMyCost, myCostRank, myStrikerIDRank));
 
     if (
         data->tmImAlive 
@@ -762,35 +809,33 @@ void Brain::updateCostToKick() {
     };
     double cost = 0.;
 
-
+    // 1. 球未检测到的时间成本（秒）
     // if (!data->ballDetected) cost += 2.0;
     double secsSinceBallDet = msecsSince(data->ball.timePoint) / 1000;
     cost += secsSinceBallDet;
     log_(format("ball not dectect cost: %.1f", secsSinceBallDet));
 
-
+    // 2. 球位置未知惩罚
     if (!tree->getEntry<bool>("ball_location_known")) {
         cost += 5.0;
         log_(format("ball lost cost: %.1f", 5.0));
     }
 
-
+    // 3. 到球的距离成本
     cost += data->ball.range;
     log_(format("ball range cost: %.1f", data->ball.range));
-    
-    
 
+    // 4. 障碍物阻挡成本
     if (distToObstacle(data->ball.yawToRobot) < 1.5) {
         log_(format("obstacle cost: %.1f", 2.0));
         cost += 2.0;
     }
 
-
+    // 5. 机器人到球的方向偏差成本
     cost += fabs(data->ball.yawToRobot) / 1.0; 
     log_(format("ball yaw cost: %.1f", fabs(data->ball.yawToRobot) / 1.0));
 
-
-
+    // 6. 潜在碰撞成本（与其他队友）
     int selfIdx = config->playerId - 1;
     for (int i = 0; i < HL_MAX_NUM_PLAYERS; i++) {
         if (i == selfIdx) continue; 
@@ -811,16 +856,17 @@ void Brain::updateCostToKick() {
         }
     }
 
+    // 7. 踢球方向调整成本
     cost += fabs(toPInPI(data->kickDir - data->robotBallAngleToField)) * 0.4 / 0.3; 
     log_(format("ajust cost: %.1f", fabs(toPInPI(data->kickDir - data->robotBallAngleToField)) * 0.4 / 0.3));
-    
 
+    // 8. 倒地惩罚
     if (data->recoveryState == RobotRecoveryState::HAS_FALLEN) {
         cost += 15.0;
         log_(format("fall cost: %.1f", 15.0));  
     }
 
-    
+    // 9. 定位失败惩罚
     if (!tree->getEntry<bool>("odom_calibrated")) {
         cost += 100;
         log_(format("localization cost: %.1f", 100.0));  
@@ -828,7 +874,8 @@ void Brain::updateCostToKick() {
     }
     
     double lastCost = data->tmMyCost;
-    data->tmMyCost = lastCost * 0.5 + cost * 0.5;
+    // 10. 指数平滑（新旧值各占 50%)
+    data->tmMyCost = lastCost * 0.5 + cost * 0.5; // 单位：秒
     log_(format("lastCost: %.1f, newCost: %.1f, smoothCost: %.1f", lastCost, cost, data->tmMyCost));
 
     return;

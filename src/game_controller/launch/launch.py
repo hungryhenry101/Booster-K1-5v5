@@ -1,3 +1,5 @@
+# coding: utf8
+
 import launch
 import os
 from launch import LaunchDescription

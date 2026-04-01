@@ -648,21 +648,107 @@ NodeStatus GoToGoalBlockingPosition::tick() {
     auto ballPos = brain->data->ball.posToField;
     auto robotPose = brain->data->robotPoseToField;
 
-    string curRole = brain->tree->getEntry<string>("player_role");
+// 最终要输出的助攻目标点（field 坐标系）：
+    // x/y 用于走位，theta 在这里不参与规划，先置 0。
+    Pose2D targetPose = {0.0, 0.0, 0.0};
 
-    Pose2D targetPose;
-    targetPose.x = curRole == "striker" ? (std::max(- fd.length / 2.0 + distToGoalline, ballPos.x - 1.5))
-            : (- fd.length / 2.0 + distToGoalline);
-    if (ballPos.x + fd.length / 2.0 < distToGoalline) {
-        targetPose.y = curRole == "striker" ? (ballPos.y > 0 ? fd.goalWidth / 2.0 : -fd.goalWidth / 2.0)
-            : (ballPos.y > 0 ? fd.goalWidth / 4.0 : -fd.goalWidth / 4.0);
-    } else {
-        targetPose.y = ballPos.y * distToGoalline / (ballPos.x + fd.length / 2.0);
-        targetPose.y = curRole == "striker" ? (cap(targetPose.y, fd.goalWidth / 2.0, -fd.goalWidth / 2.0))
-            : (cap(targetPose.y, fd.penaltyAreaWidth/ 2.0, -fd.penaltyAreaWidth / 2.0));
+    // 便于阅读的球场边界变量：
+    // ownGoalX: 我方底线 x，oppGoalX: 对方底线 x。
+    const double ownGoalX = -fd.length / 2.0;
+    const double oppGoalX = fd.length / 2.0;
+
+    // rank 表示“我在控球代价上的排序”（0 最优）。
+    // 用它把 assist 机器人分配到不同职责槽位，避免所有人追同一个点。
+    const int rank = brain->data->tmMyCostRank;
+
+    // 场上人数较多时，允许更激进的前插接应，提升前场传接应效率。
+    // 人少时则偏保守，优先保证后场覆盖。
+    const bool aggressiveAssist = brain->data->liveCount >= 3;
+
+    // 计算“我方球门 -> 球”这条拦截线在给定 x 下对应的 y：
+    // 目的是让 assist 位尽量落在防守/拦截通道上，而不是随机偏移。
+    // 几何上是线性插值：已知 (ownGoalX,0) 与 (ballPos.x, ballPos.y)，求 targetX 对应 targetY。
+    auto calcBlockLineY = [&](double targetX)
+    {
+        const double denom = ballPos.x - ownGoalX;
+        // 球非常靠近我方门线时分母可能接近 0，直接退化到中路，避免数值爆炸。
+        if (fabs(denom) < 1e-6)
+        {
+            return 0.0;
+        }
+        return ballPos.y * (targetX - ownGoalX) / denom;
+    };
+
+    // ----------------- 依据 rank 分配 assist 站位 -----------------
+    // rank 0 在 Assist 状态下通常是瞬时状态（角色切换/只剩单机等），
+    // 这里与 rank 1 合并处理，保证行为稳定且不会跑飞。
+    if (rank <= 1)
+    {
+        // ballInAttackHalf: 球是否已经到达相对更前的区域。
+        // 只有在前场 + 人数够多时，才启用前插接应位。
+        bool ballInAttackHalf = ballPos.x > -fd.circleRadius * 0.5;
+        if (aggressiveAssist && ballInAttackHalf)
+        {
+            // 第一辅助位（更进攻）：
+            // 站到球前方一条接应通道（x 前插 + y 反侧偏移），便于接应/二过一。
+            targetPose.x = ballPos.x + 1.0;
+            targetPose.y = ballPos.y + (ballPos.y >= 0.0 ? -1.2 : 1.2);
+        }
+        else
+        {
+            // 第一辅助位（更稳健）：
+            // 站到球后 2m 的拦截线上，兼顾补位与回防。
+            targetPose.x = ballPos.x - 2.0;
+            targetPose.y = calcBlockLineY(targetPose.x);
+        }
+        // 无论进攻还是保守，都不能退到我方底线内侧（避免贴门线站位）。
+        targetPose.x = max(targetPose.x, ownGoalX + distToGoalline);
+
+        // rank==0 属于异常/过渡态，打印日志便于赛后排查通信或状态抖动。
+        if (rank == 0)
+            log("tmMyCostRank == 0, fallback to rank1 assist behavior");
+    }
+    else if (rank == 2)
+    {
+        // 第二辅助位：
+        // 相比第一辅助位更靠后，承担“二次接应 + 转移保护”角色。
+        targetPose.x = ballPos.x - (aggressiveAssist ? 0.8 : 1.2);
+        // 至少保持在我方禁区外一定距离，防止被球牵引回撤过深。
+        targetPose.x = max(targetPose.x, ownGoalX + fd.penaltyAreaLength + 0.2);
+        // y 方向只跟随 60%，减少来回横摆，提升队形稳定性。
+        targetPose.y = ballPos.y * 0.6;
+    }
+    else if (rank == 3)
+    {
+        // 第三辅助位（偏防守）：
+        // 站在我方门区前沿附近，优先做安全兜底。
+        targetPose.x = ownGoalX + fd.goalAreaLength;
+        // 若球在我方更靠后位置，则跟着球再回撤一点，保持“在球后”关系。
+        if (targetPose.x > ballPos.x)
+            targetPose.x = ballPos.x - 0.5;
+        targetPose.y = calcBlockLineY(targetPose.x);
+    }
+    else
+    {
+        // rank >= 4 兜底（例如人数很多或排序异常）：
+        // 采用保守防守位，确保 targetPose 总是有定义，避免未初始化风险。
+        targetPose.x = ownGoalX + fd.goalAreaLength;
+        if (targetPose.x > ballPos.x)
+            targetPose.x = ballPos.x - 0.5;
+        targetPose.y = calcBlockLineY(targetPose.x);
+        log(format("tmMyCostRank=%d, use fallback assist position", rank));
     }
 
-    double dist = norm(targetPose.x - robotPose.x, targetPose.y - robotPose.y);
+    // ----------------- 最终场地约束（硬限位） -----------------
+    // x:
+    // - 上限：不要压进对方禁区太深（避免越位式扎堆和回防距离过长）
+    // - 下限：不要贴我方底线（保持最小防线空间）
+    targetPose.x = cap(targetPose.x, oppGoalX - fd.penaltyAreaLength - 0.2, ownGoalX + distToGoalline);
+
+    // y:
+    // - 保持在边线内侧安全余量，避免贴边导致避障/定位抖动。
+    targetPose.y = cap(targetPose.y, fd.width / 2.0 - 0.7, -fd.width / 2.0 + 0.7);
+
     if ( // 认为到达了目标位置
         dist < distTolerance
         && fabs(brain->data->ball.yawToRobot) < thetaTolerance
@@ -988,7 +1074,7 @@ NodeStatus StrikerDecide::tick() {
         else { // kickType == kick
             double threatThreshold;
             brain->get_parameter("strategy.shoot.threat_threshold", threatThreshold);
-            if (threatLevel < threatThreshold) newDecision = "safe_shoot"; // 不会出现 safe_shoot 因为 yaml 中 threatThreshold 是 -2
+            if (threatLevel < threatThreshold) newDecision = "safe_shoot";
             else newDecision = "kick";
         }        
         color = 0x00FF00FF;
@@ -3037,24 +3123,93 @@ NodeStatus GoToReadyPosition::tick()
     double vthetaLimit = 1.5;
     bool avoidObstacle = true;
 
-    if (role == "striker") {
-        if (brain->data->myStrikerIDRank == 0) {
-            tx = isKickoff ? - fd.circleRadius : - fd.circleRadius * 2;
+    // ----------------- READY 阶段基础站位分配 -----------------
+    // 对 striker：根据 myStrikerIDRank（前锋序号）分配不同槽位。
+    // 设计目标：
+    // 1) 开球/非开球时给主攻手不同前压深度；
+    // 2) 其余前锋分布在中后场，避免同点聚集；
+    // 3) rank 异常时必须有稳定兜底，不能回退到默认 (0,0)。
+    if (role == "striker")
+    {
+        // rank: 我在 striker 队列里的序号（通常由 player_id 与队友角色共同决定）。
+        const int rank = brain->data->myStrikerIDRank;
+        if (rank == 0)
+        {
+            // 主 striker：位于中路偏前，非开球时稍后撤（-2R）以保持阵型弹性。
+            tx = isKickoff ? -fd.circleRadius : -fd.circleRadius * 2;
             ty = 0.0;
-        } else if (brain->data->myStrikerIDRank == 1) {
-            tx = isKickoff ? - fd.circleRadius : - fd.circleRadius * 2;
-            ty = -1.5;
-        } else if (brain->data->myStrikerIDRank == 2) {
-            tx = - fd.length / 2.0 + fd.penaltyAreaLength;
-            ty = fd.circleRadius / 2.0;
-        } else if (brain->data->myStrikerIDRank == 3) {
-            tx = - fd.length / 2.0 + fd.penaltyDist;
-            ty = - fd.circleRadius / 2.0;
         }
-    } else if (role == "goal_keeper") {
+        else if (rank == 1)
+        {
+            // 次 striker：与主 striker 同 x 深度，但在 y 轴拉开，形成双前点。
+            tx = isKickoff ? -fd.circleRadius : -fd.circleRadius * 2;
+            ty = -1.5;
+        }
+        else if (rank == 2)
+        {
+            // 第三 striker：站在我方半场中后区域，承担过渡接应/回防过渡职责。
+            tx = -fd.length / 2.0 + fd.penaltyAreaLength;
+            ty = fd.circleRadius / 2.0;
+        }
+        else if (rank == 3)
+        {
+            // 第四 striker：与 rank=2 在纵向镜像，进一步拉开覆盖宽度。
+            tx = -fd.length / 2.0 + fd.penaltyDist;
+            ty = -fd.circleRadius / 2.0;
+        }
+        else
+        {
+            // 兜底：rank 异常(如通信瞬时丢失导致重复/越界)时不要退化到(0,0)。
+            // 用 playerId 奇偶把机器人分到左右两侧，至少保证不会所有人挤中路。
+            tx = -fd.length / 2.0 + fd.penaltyDist;
+            ty = (brain->config->playerId % 2 == 0 ? 1.0 : -1.0) * fd.circleRadius / 2.0;
+        }
+    }
+    else if (role == "goal_keeper")
+    {
+        // 对 goalie：固定在门区前沿中路，朝向正前方（ttheta=0）。
         tx = -fd.length / 2.0 + fd.goalAreaLength;
         ty = 0;
         ttheta = 0;
+    }
+
+    // 进一步防挤占：若目标点附近已有队友，则按固定偏移寻找一个空位。
+    auto isCrowded = [&](double x, double y, double radius)
+    {
+        // 遍历全部可能队友槽位（包含未上场编号），过滤掉自己和离线队友。
+        // 只要有任意在线队友落在半径 radius 内，就认为该候选点“拥挤”。
+        for (int i = 0; i < HL_MAX_NUM_PLAYERS; i++)
+        {
+            if (i + 1 == brain->config->playerId)
+                continue;
+            const auto &tm = brain->data->tmStatus[i];
+            if (!tm.isAlive)
+                continue;
+            if (norm(tm.robotPoseToField.x - x, tm.robotPoseToField.y - y) < radius)
+            {
+                return true;
+            }
+        }
+        return false;
+    };
+    if (role == "striker" && isCrowded(tx, ty, 0.8))
+    {
+        // 仅对 striker 启用二次错位：
+        // 在当前 x 保持不变的前提下，按一组离散 y 偏移尝试“最近空位”。
+        // 顺序从 0 开始，表示优先保留原目标；若拥挤再逐步向上下扩展。
+        const vector<double> yOffsets = {0.0, 0.8, -0.8, 1.6, -1.6};
+        double baseY = ty;
+        for (double dy : yOffsets)
+        {
+            // 候选点先做边界裁剪，避免贴边导致控制抖动或越界风险。
+            double candY = cap(baseY + dy, fd.width / 2.0 - 0.6, -fd.width / 2.0 + 0.6);
+            if (!isCrowded(tx, candY, 0.8))
+            {
+                // 找到第一个不拥挤的候选点后立即采用，结束搜索。
+                ty = candY;
+                break;
+            }
+        }
     }
 
     brain->client->moveToPoseOnField2(tx, ty, ttheta, longRangeThreshold, turnThreshold, vxLimit, vyLimit, vthetaLimit, distTolerance / 1.5, distTolerance / 1.5, thetaTolerance, avoidObstacle);

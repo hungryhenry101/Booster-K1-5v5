@@ -65,7 +65,7 @@ brain_node:
         xmax: 1.5 
         ymin: -0.3 
         ymax: 0.3 
-      enable_auto_visual_defend: false 
+      enable_auto_visual_defend: false  # 已被弃用
       cooperation:
         enable_role_switch: true 
         ball_control_cost_threshold: 5.0 
@@ -96,18 +96,18 @@ brain_node:
       always_turn_left: false 
 
     locator:
-      min_marker_count: 3 
-      max_residual: 0.25 
+      min_marker_count: 3 # 最少看到几个marker, 才可以进行粒子滤波定位。越大越难定位成功
+      max_residual: 0.5  # 定位结果的容差，越大越容易定位成功，但定位精度会减低
 
-    enable_com: True  # 是否开启队友间通信
+    enable_com: true  # 是否开启队友间通信
 
     rerunLog:
       enable_tcp: false # 是否通过网络传输 log
       server_ip: "192.168.10.110:9876" # 开启了 rerun Viewer 的机器地址
-      enable_file: false # 是否将 log 写入本地
+      enable_file: true # 是否将 log 写入本地
       log_dir: "/home/booster/Workspace/rrlog" # 本地 log 存储路径, 会在此路径下生成以时间为开头的文件
       max_log_file_mins: 5.0 # 本地 log 最长多少分钟就分片存储. 太大的文件会导致读的时候死机.
-      img_interval: 1 #每多少帧图像 log 一次, 如果希望更好的实时性或减少日志大小, 可以调高这个值. 但会造成 log 的时间精度降低.
+      img_interval: 2 #每多少帧图像 log 一次, 如果希望更好的实时性或减少日志大小, 可以调高这个值. 但会造成 log 的时间精度降低.
     
     recovery:
       retry_max_count: 3
@@ -122,11 +122,11 @@ brain_node:
     
 
     debug:
-      log_ball_pos: false # 是否记录球位置到 ballpos.log 中, 用于调试
+      log_ball_pos: true # 是否记录球位置到 ballpos.log 中, 用于调试
     
     game_control_ip: "TODO" # TODO: 必须修改！裁判机的 IP 地址
 
     # for fun
     sound:
-      enable: true 
+      enable: false
       sound_pack: "espeak" 
