@@ -648,7 +648,7 @@ NodeStatus GoToGoalBlockingPosition::tick() {
     auto ballPos = brain->data->ball.posToField;
     auto robotPose = brain->data->robotPoseToField;
 
-// 最终要输出的助攻目标点（field 坐标系）：
+    // 最终要输出的助攻目标点（field 坐标系）：
     // x/y 用于走位，theta 在这里不参与规划，先置 0。
     Pose2D targetPose = {0.0, 0.0, 0.0};
 
@@ -748,6 +748,7 @@ NodeStatus GoToGoalBlockingPosition::tick() {
     // y:
     // - 保持在边线内侧安全余量，避免贴边导致避障/定位抖动。
     targetPose.y = cap(targetPose.y, fd.width / 2.0 - 0.7, -fd.width / 2.0 + 0.7);
+    double dist = norm(targetPose.x - robotPose.x, targetPose.y - robotPose.y);
 
     if ( // 认为到达了目标位置
         dist < distTolerance

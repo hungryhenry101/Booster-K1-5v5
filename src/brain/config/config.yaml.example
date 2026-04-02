@@ -97,7 +97,7 @@ brain_node:
 
     locator:
       min_marker_count: 3 # 最少看到几个marker, 才可以进行粒子滤波定位。越大越难定位成功
-      max_residual: 0.5  # 定位结果的容差，越大越容易定位成功，但定位精度会减低
+      max_residual: 0.35  # 定位结果的容差，越大越容易定位成功，但定位精度会减低
 
     enable_com: true  # 是否开启队友间通信
 
@@ -128,5 +128,5 @@ brain_node:
 
     # for fun
     sound:
-      enable: false
+      enable: true
       sound_pack: "espeak" 
