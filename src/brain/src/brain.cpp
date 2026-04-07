@@ -23,6 +23,7 @@ Brain::Brain() : rclcpp::Node("brain_node")
     
     // 要注意参数必须先在这里声明，否则程序里也读不到
     // 配置在 yaml 文件中的参数，如果有层级结构，用点分号来获取
+    // 这里的配置优先级比 brain_config.h 高，比 yaml 配置文件低
 
     declare_parameter<int>("game.team_id", 0);
     declare_parameter<int>("game.player_id", 29);
