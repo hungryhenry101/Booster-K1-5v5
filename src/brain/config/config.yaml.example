@@ -30,7 +30,7 @@ brain_node:
       ball_confidence_decay_rate: 3.0 # 看到 confidence 为 100 的球后，多少秒没有再看到，则认为球丢了
       enable_stable_kick: false # 开启后，在 kick 时，如风险较低，则稳定一下再出脚
       ball_memory_timeout: 3.0 # 球记忆失效时间，超过这个时间，认为球丢了
-      tm_ball_dist_threshold: 1.5  # 队友发送的球的位置与我当前位置的距离，如果大于此值，则认为队友的信息准确.
+      tm_ball_dist_threshold: 0.5  # 队友发送的球的位置与我当前位置的距离，如果大于此值，则认为队友的信息准确.
       limit_near_ball_speed: false # 是否限制在 chase 时靠近球时的速度
       near_ball_speed_limit: 0.6 # 靠近球时的速度限制
       near_ball_range: 2.0 # 靠近球时的范围，在这个范围内，限制速度
@@ -44,12 +44,12 @@ brain_node:
       limit_speed_near_border: false # 是否限制在 chase 时靠近场地边界时的速度
       near_border_speed_limit: 0.5 # 靠近场地边界时的速度限制
       near_border_dist_threshold: -1.0 # 靠近场地边界时的范围，在这个范围内，限制速度。注意，这里负值代表在场内.
-      enable_bypass: false # 是否开启传球策略
-      enable_shoot: false # 是否使用 shoot
-      enable_directional_kick: false # 为 true 时，在方向合适时会通过斜向踢球来将球往对方球门踢
+      enable_bypass: false # 是否开启传球策略   ---NO FUNCTION----
+      enable_shoot: false # 是否使用 shoot    ---NO FUNCTION----
+      enable_directional_kick: false # 为 true 时，在方向合适时会通过斜向踢球来将球往对方球门踢   ---NO FUNCTION----
       use_squat_block: true # 是否使用蹲下挡球策略，如果为 true, 则守门员会蹲下挡球，否则只会站立挡球
       squat_block_msecs: 2000.0 # 蹲下挡球的时间，单位：毫秒
-      use_move_block: false # 是否使用移动挡球策略，如果为 true, 则守门员依据对球路的预测，提前向挡球位置移动，如 false, 则只会向球的当前位置移动.
+      use_move_block: false # 是否使用移动挡球策略，如果为 true, 则守门员依据对球路的预测，提前向挡球位置移动，如 false, 则只会向球的当前位置移动.  !!!TODO: WORTH TESTING
       move_block_msecs: 2000.0 # 移动挡球的时间，单位：毫秒
       shoot:
         threat_threshold: -2.0 # threat 小于此值时，才使用 kick
@@ -65,7 +65,7 @@ brain_node:
         xmax: 1.5 # 大力开球的 x 轴范围，单位：米
         ymin: -0.3 # 大力开球的 y 轴范围，单位：米
         ymax: 0.3 # 大力开球的 y 轴范围，单位：米
-      enable_auto_visual_defend: false # 是否开启自动视觉踢球，如果为 true, 则在一定条件下会进入视觉自动踢球状态
+      enable_auto_visual_defend: false # 是否开启自动视觉踢球，如果为 true, 则在一定条件下会进入视觉自动踢球状态  ---NO FUNCTION----
       cooperation:
         enable_role_switch: true # 开启后，会根据场上裁判机上存活的队友数量，来自动决定自己的角色。
         ball_control_cost_threshold: 5.0 # 队友踢球的 cost 小于此值时，我不再上前抢球，而是转为助攻
@@ -110,7 +110,7 @@ brain_node:
       img_interval: 2 # 每多少帧图像 log 一次，如果希望更好的实时性或减少日志大小，可以调高这个值。但会造成 log 的时间精度降低.
 
     recovery:
-      retry_max_count: 4 # 尝试起身的最大次数，超过这个次数后，认为起身失败，进入 recovery 模式，需要人工干预
+      retry_max_count: 3 # 尝试起身的最大次数，超过这个次数后，认为起身失败，进入 recovery 模式，需要人工干预
 
     vision:
       image_topic: "/camera/camera/color/image_raw" # RGB 图像的 topic 名称
