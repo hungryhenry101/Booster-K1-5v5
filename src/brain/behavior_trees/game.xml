@@ -88,7 +88,7 @@
                             <SetVelocity />
                         </ReactiveSequence>
                         <ReactiveSequence _while="gc_game_sub_state=='GET_READY'">
-                            <SubTree ID="CamFindAndTrackBall" _autoremap="true" />
+                            <!-- <SubTree ID="CamFindAndTrackBall" _autoremap="true" />  在Freekick中已经实现找球  -->
                             <SubTree ID="Locate" _autoremap="true" _while="ball_location_known" />
                             <SubTree ID="StrikerFreekick" _autoremap="true" _while="player_role == 'striker'" />
                             <SubTree ID="GoalKeeperFreekick" _autoremap="true" _while="player_role == 'goal_keeper'"/>
