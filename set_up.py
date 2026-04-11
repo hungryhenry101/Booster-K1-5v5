@@ -8,6 +8,7 @@ import os
 import re
 import sys
 import subprocess
+import shutil
 
 # 获取脚本所在目录
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -21,11 +22,28 @@ GAME_CONTROL_LAUNCH_PY = os.path.join(script_dir, "src", "game_controller", "lau
 VALID_PLAYER_IDS = [1, 2, 3, 4, 5]
 VALID_ROLES = ["striker", "goal_keeper"]
 
+def gen_quickstart_sh():
+    target = "/home/booster/1.sh"
+    if os.path.exists(target):
+        return
+    
+    commands = [
+        "#!/bin/bash",
+        "cd /home/booster/Workspace/Booster-K1-5v5",
+        "sh ./scripts/start_realsense.sh",
+        "sh ./scripts/start.sh"
+    ]
+    content = "\n".join(commands) 
+    with open(target, "w") as f:
+        f.write(content)
+        
+    os.chmod(target, 0o755)
+    
 
 def copy_latest_vision_config():
     """复制手眼标定配置文件"""
     target_config = os.path.join(script_dir, "src", "vision", "config", "vision.yaml")
-    source_config = os.path.join("/opt/booster/vision.yaml")
+    source_config = "/opt/booster/vision.yaml"
 
     if not os.path.exists(source_config):
         print(f"⚠️  最新标定文件夹中找不到 vision_local.yaml: {source_config}")
@@ -36,7 +54,6 @@ def copy_latest_vision_config():
     if not os.path.exists(target_dir):
         os.makedirs(target_dir)
 
-    import shutil
     shutil.copy2(source_config, target_config)
     print(f"✅ 已复制最新手眼标定配置：/opt/booster/vision.yaml → src/vision/config/vision.yaml")
 
@@ -271,6 +288,9 @@ def main():
     # 复制最新的手眼标定配置
     copy_latest_vision_config()
     print()
+    
+    gen_quickstart_sh()
+    print("已创建快速启动 1.sh")
 
     # 从 example 创建 config.yaml（如果不存在）
     create_config_from_example()
