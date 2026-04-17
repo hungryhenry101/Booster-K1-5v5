@@ -24,7 +24,8 @@ VALID_ROLES = ["striker", "goal_keeper"]
 
 def gen_quickstart_sh():
     target = "/home/booster/1.sh"
-    if os.path.exists(target):
+    if os.path.exists(target) or not os.path.exists("/home/booster/"):
+        print("1.sh 已存在")
         return
     
     commands = [
@@ -38,7 +39,7 @@ def gen_quickstart_sh():
         f.write(content)
         
     os.chmod(target, 0o755)
-    
+    print("已创建快速启动 1.sh")
 
 def copy_latest_vision_config():
     """复制手眼标定配置文件"""
@@ -290,7 +291,7 @@ def main():
     print()
     
     gen_quickstart_sh()
-    print("已创建快速启动 1.sh")
+    print()
 
     # 从 example 创建 config.yaml（如果不存在）
     create_config_from_example()

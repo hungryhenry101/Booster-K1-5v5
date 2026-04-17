@@ -7,6 +7,25 @@
 #include "utils/print.h"
 #include "utils/misc.h"
 
+namespace {
+
+// API IDs for RL skills.
+// kVisualKick must match the public SDK: booster::robot::b1::LocoApiId::kVisualKick = 2038
+constexpr int64_t kApiIdEnableVisualKickMode = 2038;   // kVisualKick (public SDK)
+constexpr int64_t kApiIdRLKickBall           = 100011;  // kRLKickBall (internal SDK)
+constexpr int64_t kApiIdRLFancyKickBall      = 100012;  // kRLFancyKickBall (internal SDK)
+
+std::string BuildRLSkillKickParams(double kick_speed, double kick_dir, bool cancel)
+{
+    nlohmann::json body;
+    body["kick_speed"] = static_cast<float>(kick_speed);
+    body["kick_dir"] = static_cast<float>(kick_dir);
+    body["cancel"] = cancel;
+    return body.dump();
+}
+
+} // namespace
+
 void RobotClient::init()
 {
     publisher = brain->create_publisher<booster_msgs::msg::RpcReqMsg>("LocoApiTopicReq", 10);
@@ -54,11 +73,10 @@ int RobotClient::kickBall(double kick_speed, double kick_dir, bool cancel)
     setVelocity(0.0, 0.0, 0.0, false, false, false); // 停止运动，准备踢球
     std::this_thread::sleep_for(std::chrono::milliseconds(10)); // 10ms后再发踢球命令,否则踢球命令可能下发不下去,原因待查
 
-    booster_internal::robot::b1::RLKickBallParameter kick_param(kick_speed, kick_dir, cancel);
-    std::string param = kick_param.ToJson().dump();
+    std::string param = BuildRLSkillKickParams(kick_speed, kick_dir, cancel);
 
     booster_interface::msg::BoosterApiReqMsg msg;
-    msg.api_id = static_cast<int64_t>(booster_internal::robot::b1::LocoInternalApiId::kRLKickBall);
+    msg.api_id = kApiIdRLKickBall;
     msg.body = param;
 
     return call(msg);
@@ -76,11 +94,10 @@ int RobotClient::walkMode()
 
 int RobotClient::fancyKickBall(double kick_speed, double kick_dir, bool cancel)
 {
-    booster_internal::robot::b1::RLFancyKickBallParameter kickParam(kick_speed, kick_dir, cancel);
-    std::string param = kickParam.ToJson().dump();
+    std::string param = BuildRLSkillKickParams(kick_speed, kick_dir, cancel);
 
     booster_interface::msg::BoosterApiReqMsg msg;
-    msg.api_id = static_cast<int64_t>(booster_internal::robot::b1::LocoInternalApiId::kRLFancyKickBall);
+    msg.api_id = kApiIdRLFancyKickBall;
     msg.body = param;
 
     return call(msg);
@@ -129,22 +146,21 @@ int RobotClient::squatUp()
     return call(msg);
 }
 
-int RobotClient::RLVisionKick()
+int RobotClient::RLVisionKick(bool start)
 {
     booster_interface::msg::BoosterApiReqMsg msg;
-    msg.api_id = static_cast<int64_t>(booster_internal::robot::b1::LocoInternalApiId::kEnableVisualKickMode);
+    msg.api_id = kApiIdEnableVisualKickMode;
     nlohmann::json body;
+    body["start"] = start;
     msg.body = body.dump();
+    std::cout << "[DEBUG] RobotClient::RLVisionKick called with start=" << (start ? "true" : "false") << ", api_id=" << msg.api_id << std::endl;
     return call(msg);
 }
 
 int RobotClient::robocupWalk()
 {
-    booster_interface::msg::BoosterApiReqMsg msg;
-    msg.api_id = static_cast<int64_t>(booster_internal::robot::b1::LocoInternalApiId::kEnableRobocupWalkMode);
-    nlohmann::json body;
-    msg.body = body.dump();
-    return call(msg);
+    std::cout << "[DEBUG] RobotClient::robocupWalk called" << std::endl;
+    return call(booster_interface::CreateChangeModeMsg(booster::robot::RobotMode::kWalking));
 }
 
 int RobotClient::enterDamping()
@@ -174,7 +190,7 @@ int RobotClient::setVelocity(double x, double y, double theta, bool applyMinX, b
     //                     .with_draw_order(1.0));
 
     // 速度指令太小时, 给一个最小速度, 以防止不响应 TODO 转为参数化
-    double minx = 0.05, miny = 0.08, mintheta = 0.05;
+    double minx = 0.3, miny = 0.3, mintheta = 0.3;
     if (applyMinX && fabs(x) < minx && fabs(x) > 1e-5)
         x = x > 0 ? minx : -minx;
     if (applyMinY && fabs(y) < miny && fabs(y) > 1e-5)

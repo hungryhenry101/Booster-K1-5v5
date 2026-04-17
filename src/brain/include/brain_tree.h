@@ -145,11 +145,11 @@ public:
     CamScanField(const std::string &name, const NodeConfig &config, Brain *_brain) : SyncActionNode(name, config), brain(_brain) {}
     static BT::PortsList providedPorts() {
         return {
-            InputPort<double>("low_pitch", 0.6, ""),
-            InputPort<double>("high_pitch", 0.45, ""),
-            InputPort<double>("left_yaw", 0.8, ""),
-            InputPort<double>("right_yaw", -0.8, ""),
-            InputPort<int>("msec_cycle", 4000, ""),
+            InputPort<double>("low_pitch", 0.35, "向下看时的最大 pitch"),
+            InputPort<double>("high_pitch", 0.15, "向上看时的最小 pitch"),
+            InputPort<double>("left_yaw", 0.8, "向左看时的最大 yaw"),
+            InputPort<double>("right_yaw", -0.8, "向右看时的最小 yaw"),
+            InputPort<int>("msec_cycle", 4000, "多少毫秒转一圈"),
         };
     }
     NodeStatus tick() override;
@@ -167,8 +167,8 @@ public:
     void onHalted() override {};
 private:
     double _cmdSequence[7][2] = {
-        {0.45, 1.1}, {0.45, 0.0}, {0.45, -1.1},
-        {1.0, -1.1}, {1.0, 0.0}, {1.0, 1.1}, {0.45, 0.0},
+        {0.2, 1.1}, {0.2, 0.0}, {0.2, -1.1},
+        {0.9, -1.1}, {0.9, 0.0}, {0.9, 1.1}, {0.2, 0.0},
     };
     rclcpp::Time _timeLastCmd;
     int _cmdIndex = 0;
@@ -256,6 +256,12 @@ public:
             InputPort<double>("vy_limit", 0.1, ""),
             InputPort<double>("vtheta_limit", 0.4, ""),
             InputPort<double>("range", 1.5, ""),
+            InputPort<double>("vtheta_factor", 1.5, ""),
+            InputPort<double>("tangential_speed_far", 0.7, ""),
+            InputPort<double>("tangential_speed_near", 0.15, ""),
+            InputPort<double>("near_threshold", 0.8, ""),
+            InputPort<double>("no_turn_threshold", 0.1, ""),
+            InputPort<double>("turn_first_threshold", 0.5, ""),
             InputPort<double>("min_range", 1.0, ""),
             InputPort<string>("position", "offense", "")};
     }
@@ -311,12 +317,48 @@ class RLVisionKick : public StatefulActionNode
 {
 public:
     RLVisionKick(const string &name, const NodeConfig &config, Brain *_brain) : StatefulActionNode(name, config), brain(_brain) {}
-    static PortsList providedPorts() { return {}; }
-    NodeStatus onStart() override { return NodeStatus::SUCCESS; }
-    NodeStatus onRunning() override { return NodeStatus::SUCCESS; }
-    void onHalted() override {};
+
+    static PortsList providedPorts()
+    {
+        return {
+            InputPort<double>("max_msec_kick", 10000, "Maximum duration for the kick action (milliseconds)"),
+            InputPort<double>("min_msec_kick", 3000, "Minimum duration for the kick action (milliseconds)"),
+            InputPort<double>("range", 1.5, "Range within which the strategy is considered effective"),
+            InputPort<double>("auto_visual_kick_enable_dist_min", 0.0, "Minimum distance for enabling auto visual kick"),
+            InputPort<double>("auto_visual_kick_enable_dist_max", 4.0, "Maximum distance for enabling auto visual kick"),
+            InputPort<double>("auto_visual_kick_enable_angle", 0.785, "Angle range for enabling auto visual kick"),
+            InputPort<double>("auto_visual_kick_enable_goal_angle", 0.35, "Angle range for enabling auto visual kick towards the goal"),
+            InputPort<double>("auto_visual_kick_obstacle_dist_threshold", 1.0, "Distance threshold for obstacles during auto visual kick, if an obstacle is within this distance, auto visual kick will not be executed"),
+            InputPort<double>("auto_visual_kick_obstacle_angle_threshold", 1.744, "Angle threshold for obstacles in front during auto visual kick, if an obstacle is within this angle, auto visual kick will not be executed"),
+        };
+    }
+
+    NodeStatus onStart() override;
+
+    NodeStatus onRunning() override;
+
+    void onHalted() override;
+
+    static rclcpp::Time getLastExitTime() { return _lastExitTime; }
+
+    static bool isMinIntervalSatisfied(double minIntervalMsec);
+
 private:
     Brain *brain;
+    rclcpp::Time _startTime;
+    rclcpp::Time _headScanStartTime;
+
+    bool _isDecelerating = false;
+    bool _visionKickStarted = false;
+    bool _pendingRobocupWalk = false;
+    rclcpp::Time _decelStartTime;
+    double _decelDurationMs = 500.0;
+
+    static rclcpp::Time _lastExitTime;
+
+    void recordExitTime();
+    void startDecelerate(double durationMs = 500.0);
+    bool stepDecelerate();
 };
 
 class Intercept : public StatefulActionNode

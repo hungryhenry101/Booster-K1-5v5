@@ -136,7 +136,7 @@ public:
     /**
      * @brief 切换到rl结合视觉的踢球
      */
-    int RLVisionKick();
+    int RLVisionKick(bool start = true);
 
     /**
      * @brief 切换到robocup步态

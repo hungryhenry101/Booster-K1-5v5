@@ -57,6 +57,7 @@ public:
     GameObject ball;              // 球的各项信息记录, 包含位置, boundingbox 等
     GameObject tmBall;            // 队友传来的球的信息
     double robotBallAngleToField; // 机器人到球的向量, 在球场坐标系中与 X 轴的夹角, (-PI,PI]
+    bool lose_ball = false;       // 视觉丢球状态, 用于 visual kick 的退出判定
     vector<array<double, 2>> predictedBallPos; // 预测的球的位置, 单位 m, 相对于球场坐标系. 第一维为 x, 第二维为 y
     rclcpp::Time ballPosPredictTime; // 上一次进行预测的球的位置的时间戳
     bool ballWillBreach = false; // 是否会从机器人身边穿过
@@ -140,6 +141,8 @@ public:
     double tmMyCost = 0.; // 我接近球的成本, 用于多机配合. 基本上 cost 相当于我踢到球需要花的秒数.
     int tmMyCostRank = 0; // 我接近球的成本排名, 用于多机配合. 基本上 cost 相当于我踢到球需要花的秒数.
     int myStrikerIDRank = 0; // 我的 ID 在前锋中的排名, 用于多机配合. 
+    bool tmImInVisualKick = false; // 自己是否处于 visual kick 模式
+    bool shouldExitRLVisionKick = false; // 是否需要主动退出 visual kick 模式
 
     // 通讯相关
     int discoveryMsgId = 0;

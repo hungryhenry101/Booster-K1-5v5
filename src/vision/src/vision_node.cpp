@@ -63,35 +63,28 @@ void VisionNode::Init(const std::string &cfg_template_path, const std::string &c
     this->get_parameter<bool>("save_depth", save_depth_);
     this->get_parameter<bool>("offline_mode", offline_mode_);
     this->get_parameter<std::string>("camera_type", camera_type_);
-
     this->get_parameter<std::string>("detection_model_path", detection_model_path);
     std::cout << "detection_model_path origin: " << detection_model_path << std::endl;
-    // 回退：如果参数未提供则使用 YAML 中的 model_path
-    if (detection_model_path.empty() && node["detection_model"] && node["detection_model"]["model_path"]) {
-        detection_model_path = node["detection_model"]["model_path"].as<std::string>();
-        std::cout << "detection_model_path fallback from YAML: " << detection_model_path << std::endl;
-    }
+
     if(!detection_model_path.empty()){
         if(detection_model_path[0] == '/') {
-            // absolute path
+            // absolute path, do nothing
         } else {
             std::string package_path = ament_index_cpp::get_package_share_directory("vision");
-            detection_model_path = (std::filesystem::path(package_path) / detection_model_path).string();
+            detection_model_path = std::filesystem::path(package_path) / detection_model_path;
         }
     }
 
+
     this->get_parameter<std::string>("segmentation_model_path", segmentation_model_path);
     std::cout << "segmentation_model_path origin: " << segmentation_model_path << std::endl;
-    if (segmentation_model_path.empty() && node["segmentation_model"] && node["segmentation_model"]["model_path"]) {
-        segmentation_model_path = node["segmentation_model"]["model_path"].as<std::string>();
-        std::cout << "segmentation_model_path fallback from YAML: " << segmentation_model_path << std::endl;
-    }
+
     if(!segmentation_model_path.empty()){
         if(segmentation_model_path[0] == '/') {
-            // absolute path
+            // absolute path, do nothing
         } else {
             std::string package_path = ament_index_cpp::get_package_share_directory("vision");
-            segmentation_model_path = (std::filesystem::path(package_path) / segmentation_model_path).string();
+            segmentation_model_path = std::filesystem::path(package_path) / segmentation_model_path;
         }
     }
     
@@ -173,10 +166,7 @@ void VisionNode::Init(const std::string &cfg_template_path, const std::string &c
     bool save_data_nonstationary = as_or<bool>(node["misc"]["save_data_nonstationary"], true);
     std::string log_root = std::string(std::getenv("HOME")) + "/Workspace/vision_log/" + getTimeString();
     data_logger_ = save_data_ ? std::make_shared<DataLogger>(log_root, save_data_nonstationary) : nullptr;
-    // 空指针保护，避免 save_data_ 为 false 时段错误
-    if (data_logger_) {
-        data_logger_->LogYAML(node, "vision_local.yaml");
-    }
+    data_logger_->LogYAML(node, "vision_local.yaml");
     seg_data_syncer_ = std::make_shared<DataSyncer>(false);
 
     // init robot color classifier
@@ -210,10 +200,22 @@ void VisionNode::Init(const std::string &cfg_template_path, const std::string &c
     // init ros related
 
     std::cout << "current camera_type : " << camera_type_ << std::endl;
-
-    // RealSense camera topics
-    std::string color_topic = "/camera/camera/color/image_raw";
-    std::string depth_topic = "/camera/camera/aligned_depth_to_color/image_raw";
+    std::string color_topic;
+    std::string depth_topic;
+    if (camera_type_.find("zed") != std::string::npos) {
+        color_topic = "/zed/zed_node/left/image_rect_color";
+        depth_topic = "/zed/zed_node/depth/depth_registered";
+    } else if (camera_type_ == "d-robotics") {
+        color_topic = "/image_left_raw";
+        depth_topic = "/image_left_raw/camera_info";
+    } else if (camera_type_ == "orbbec") {
+        color_topic = "/camera/color/image_raw";
+        depth_topic = "/camera/depth/image_raw";
+    } else {
+        // realsense
+        color_topic = "/camera/camera/color/image_raw";
+        depth_topic = "/camera/camera/aligned_depth_to_color/image_raw";
+    }
 
     callback_group_sub_1_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
     callback_group_sub_2_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
@@ -230,23 +232,40 @@ void VisionNode::Init(const std::string &cfg_template_path, const std::string &c
 
     it_ = std::make_shared<image_transport::ImageTransport>(shared_from_this());
     image_transport::TransportHints hints(this, "compressed");
-    
-    // 创建匹配摄像头发布者的 QoS 配置 (TRANSIENT_LOCAL durability)
-    rmw_qos_profile_t custom_qos = rmw_qos_profile_sensor_data;
-    custom_qos.reliability = RMW_QOS_POLICY_RELIABILITY_RELIABLE;
-    custom_qos.durability = RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL;
-    custom_qos.depth = 1;
-    
+    // Subscribe to both raw and compressed image topics for color
     if (camera_type_.find("compressed") != std::string::npos) {
         color_sub_ = it_->subscribe(color_topic, 1, &VisionNode::ColorCallback, this, &hints, sub_opt_1);
     } else {
-        color_sub_ = it_->subscribe(color_topic, custom_qos, &VisionNode::ColorCallback, this, nullptr, sub_opt_1);
-
-    }
+        color_sub_ = it_->subscribe(color_topic, 1, &VisionNode::ColorCallback, this, nullptr, sub_opt_1);
+    } 
     if (use_depth_) {
-        depth_sub_ = it_->subscribe(depth_topic, custom_qos, &VisionNode::DepthCallback, this, nullptr, sub_opt_3);
-
+        depth_sub_ = it_->subscribe(depth_topic, 1, &VisionNode::DepthCallback, this, nullptr, sub_opt_3);
     }
+    if (camera_type_.find("compressed") != std::string::npos) {
+        color_sub_ = it_->subscribe(color_topic, 2, &VisionNode::ColorCallback, this, &hints, sub_opt_1);
+    } else {
+        color_sub_ = it_->subscribe(color_topic, 2, &VisionNode::ColorCallback, this, nullptr, sub_opt_1);
+    } 
+    if (use_depth_) {
+        depth_sub_ = it_->subscribe(depth_topic, 2, &VisionNode::DepthCallback, this, nullptr, sub_opt_3);
+    }
+
+    // auto qos_profile = rclcpp::QoS(rclcpp::KeepLast(1))
+    // auto qos_profile = rclcpp::QoS(rclcpp::KeepLast(1))
+    //     .reliability(rclcpp::ReliabilityPolicy::BestEffort)  // Use best effort for real-time performance
+    //     .durability(rclcpp::DurabilityPolicy::Volatile);
+
+    // color_sub_ = this->create_subscription<sensor_msgs::msg::Image>(
+    //     color_topic,
+    //     qos_profile,
+    //     std::bind(&VisionNode::ColorCallback, this, std::placeholders::_1),
+    //     sub_opt_1);
+
+    // depth_sub_ = this->create_subscription<sensor_msgs::msg::Image>(
+    //     depth_topic,
+    //     qos_profile,
+    //     std::bind(&VisionNode::DepthCallback, this, std::placeholders::_1),
+    //     sub_opt_3);
 
     detection_pub_ = this->create_publisher<vision_interface::msg::Detections>("/booster_vision/detection", rclcpp::QoS(1));
 
@@ -255,8 +274,7 @@ void VisionNode::Init(const std::string &cfg_template_path, const std::string &c
         if (camera_type_.find("compressed") != std::string::npos) {
             color_seg_sub_ = it_->subscribe(color_topic, 1, &VisionNode::SegmentationCallback, this, &hints, sub_opt_2);
         } else {
-            color_seg_sub_ = it_->subscribe(color_topic, custom_qos, &VisionNode::SegmentationCallback, this, nullptr, sub_opt_2);
-
+            color_seg_sub_ = it_->subscribe(color_topic, 1, &VisionNode::SegmentationCallback, this, nullptr, sub_opt_2);
         } 
         field_line_pub_ = this->create_publisher<vision_interface::msg::LineSegments>("/booster_vision/line_segments", rclcpp::QoS(1));
     }
@@ -275,13 +293,6 @@ void VisionNode::ProcessData(SyncedDataBlock &synced_data, vision_interface::msg
     double timestamp = synced_data.color_data.timestamp;
     double depth_time_diff = (timestamp - synced_data.depth_data.timestamp) * 1000;
     double pose_time_diff = (timestamp - synced_data.pose_data.timestamp) * 1000;
-    
-    // 检查 pose 数据是否有效（避免在收到 pose 之前处理图像导致崩溃）
-    if (synced_data.pose_data.timestamp == 0 || pose_time_diff > 5000) {
-        std::cerr << "Skipping frame: pose data not ready (time diff: " << pose_time_diff << " ms)" << std::endl;
-        return;
-    }
-    
     if (use_depth_ && depth_time_diff > 40) {
         std::cerr << "color depth time diff: " << depth_time_diff << "ms" << std::endl;
     }
@@ -422,6 +433,21 @@ void VisionNode::ProcessData(SyncedDataBlock &synced_data, vision_interface::msg
     detection_pub_->publish(detection_msg);
     std::cout << std::endl;
 
+    // 新增: 打印两次检测发布时间间隔
+    {
+        static double last_pub_time = -1.0;
+        static uint64_t count = 0;
+        double pub_ts = detection_msg.header.stamp.sec +
+                        static_cast<double>(detection_msg.header.stamp.nanosec) * 1e-9;
+        if (last_pub_time >= 0.0) {
+            double diff_ms = (pub_ts - last_pub_time) * 1000.0;
+            std::cout << "[Detections Pub Interval] #" << (count) 
+                      << " -> #" << (count + 1) << ": " << diff_ms << " ms" << std::endl;
+        }
+        last_pub_time = pub_ts;
+        count++;
+    }
+
     vision_interface::msg::Ball ball_msg;
     ball_msg.header = detection_msg.header;
     ball_msg.confidence = 0;
@@ -482,19 +508,6 @@ void VisionNode::ColorCallback(const sensor_msgs::msg::Image::ConstSharedPtr &ms
         std::cerr << "empty image message." << std::endl;
         return;
     }
-    // ---- 新增：时间戳 / 间隔 / 延迟(ms) 打印 ----
-    double ros_ts = msg->header.stamp.sec + static_cast<double>(msg->header.stamp.nanosec) * 1e-9;
-    static double last_ros_ts_color = -1.0;
-    double interval_ms = (last_ros_ts_color < 0) ? 0.0 : (ros_ts - last_ros_ts_color) * 1000.0;
-    last_ros_ts_color = ros_ts;
-    // 使用节点时钟（可能受 use_sim_time 影响）
-    rclcpp::Time now_time = this->get_clock()->now();
-    double now_sec = static_cast<double>(now_time.nanoseconds()) * 1e-9;
-    double latency_ms = (now_sec - ros_ts) * 1000.0;
-    std::cout << "[vision] color ts=" << std::fixed << std::setprecision(3) << ros_ts * 1000.0
-              << "ms interval=" << interval_ms
-              << "ms latency=" << latency_ms << "ms" << std::endl;
-    // ---------------------------------------------
 
     // cv_bridge::CvImagePtr cv_ptr;
     cv::Mat img;
@@ -525,17 +538,11 @@ void VisionNode::ColorCallback(const sensor_msgs::msg::Image::ConstSharedPtr &ms
 
 void VisionNode::ProcessSegmentationData(SyncedDataBlock &synced_data, vision_interface::msg::LineSegments &field_line_segs_msg) {
     double timestamp = synced_data.color_data.timestamp;
-    double time_diff = (timestamp - synced_data.pose_data.timestamp) * 1000;
-    
-    // 检查 pose 数据是否有效（避免在收到 pose 之前处理图像导致崩溃）
-    if (synced_data.pose_data.timestamp == 0 || time_diff > 5000) {
-        std::cerr << "seg: Skipping frame: pose data not ready (time diff: " << time_diff << " ms)" << std::endl;
-        return;
-    }
     cv::Mat color = synced_data.color_data.data;
     Pose p_head2base = synced_data.pose_data.data;
     Pose p_eye2base = p_head2base * p_headprime2head_ * p_eye2head_;
 
+    double time_diff = (timestamp - synced_data.pose_data.timestamp) * 1000;
     if (time_diff > 40) {
         std::cerr << "seg: color pose time diff: " << time_diff << " ms" << std::endl;
     }
