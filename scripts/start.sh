@@ -2,6 +2,8 @@
 
 cd `dirname $0`
 cd ..
+WORKSPACE_ROOT=$(pwd)
+VISION_CONFIG_PATH="${WORKSPACE_ROOT}/src/vision/config"
 
 echo "[STOP EXISTING NODES (IF ANY), TO AVOID CONFILICT]"
 sudo killall -9 booster-video-stream
@@ -17,6 +19,7 @@ systemctl --user disable robocup_game_assist.service
 
 echo "[START ROBOCUP NODES]"
 source ./install/setup.bash
+export FASTRTPS_DEFAULT_PROFILES_FILE=/opt/booster/BoosterRos2/fastdds_profile_udp_only.xml
 # export RMW_FASTRTPS_USE_SHM=0
 
 
@@ -26,11 +29,11 @@ echo "[START VISION]"
 # source ~/ThirdParty/zed-ros/install/setup.bash
 # nohup ros2 launch zed_wrapper zed_camera.launch.py camera_model:="zed2i" > zed.log 2>&1 &
 # nohup ros2 launch vision launch.py save_data:=true > vision.log 2>&1 &
-nohup ros2 launch vision launch.py vision_config_path:=/home/booster/Workspace/robocup_5v5demo/src/vision/config save_data:=true > vision.log 2>&1 &
+nohup ros2 launch vision launch.py vision_config_path:=/opt/booster save_data:=true > vision.log 2>&1 &
 # nohup ros2 run ros2_sync_package sync_node > sync_node.log 2>&1 &
 # nohup sh src/vision_segmentation/run.sh > vision_segmentation.log 2>&1 &
 echo "[START BRAIN]"
-nohup ros2 launch brain launch.py vision_config_path:=/home/booster/Workspace/robocup_5v5demo/src/vision/config "$@" > brain.log 2>&1 &
+nohup ros2 launch brain launch.py vision_config_path:=/opt/booster "$@" > brain.log 2>&1 &
 # nohup ros2 launch brain launch.py "$@"  > brain.log 2>&1 &
 echo "[START GAME_CONTROLLER]"
 nohup ros2 launch game_controller launch.py > game_controller.log 2>&1 &

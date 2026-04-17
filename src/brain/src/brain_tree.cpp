@@ -71,6 +71,7 @@ void BrainTree::init()
     REGISTER_BUILDER(WaveHand)
     REGISTER_BUILDER(MoveHead)
     REGISTER_BUILDER(CheckAndStandUp)
+    REGISTER_BUILDER(RLVisionKick)
     REGISTER_BUILDER(Intercept)
 
     REGISTER_BUILDER(RoleSwitchIfNeeded)
@@ -274,7 +275,7 @@ NodeStatus CamTrackBall::tick()
 CamFindBall::CamFindBall(const string &name, const NodeConfig &config, Brain *_brain) : SyncActionNode(name, config), brain(_brain)
 {
     double lowPitch = 1.0;
-    double highPitch = 0.45;
+    double highPitch = 0.2;
     double leftYaw = 1.1;
     double rightYaw = -1.1;
 
@@ -384,79 +385,70 @@ NodeStatus Chase::tick()
     getInput("dist", dist);
     getInput("safe_dist", safeDist);
 
-    double ballRange = brain->data->ball.range;
-    double targetRange = ballRange;
-    double ballYaw = brain->data->ball.yawToRobot;
-    double targetYaw = ballYaw;
-
-    double vx, vy, vtheta;
-    Pose2D target_f, target_r; // 移动目标在 field 和 robot 坐标系中的 Pose, 只看 x,y
-
-    if (brain->data->robotPoseToField.x - brain->data->ball.posToField.x > (_state == "chase" ? 1.0 : 0.0))
-    { // circle back
-        _state = "circle_back";
-        // 目标 x 坐标
-        target_f.x = brain->data->ball.posToField.x - dist;
-
-        // 目标 y 坐标. 即决策从哪边绕, 并防止震荡
-        if (brain->data->robotPoseToField.y > brain->data->ball.posToField.y - _dir)
-            _dir = 1.0;
-        else
-            _dir = -1.0;
-
-        target_f.y = brain->data->ball.posToField.y + _dir * safeDist;
-
-        target_r = brain->data->field2robot(target_f);
-        targetRange = norm(target_r.x, target_r.y);
-        vx = target_r.x;
-        vy = 0;
-        vtheta = atan2(target_r.y, target_r.x);
-    }
-    else
-    { // chase
-        _state = "chase";
-        target_f.x = brain->data->ball.posToField.x - dist * cos(brain->data->kickDir);
-        target_f.y = brain->data->ball.posToField.y - dist * sin(brain->data->kickDir);
-
-        target_r = brain->data->field2robot(target_f);
-        targetRange = norm(target_r.x, target_r.y);
-        if (targetRange > 1.0) {
-            vx = target_r.x;
-            vy = 0;
-            vtheta = atan2(target_r.y, target_r.x);
-            targetYaw = vtheta;
-        } else {
-            vx = target_r.x;
-            vy = target_r.y;
-            vtheta = ballYaw;
-        }
-    }
-
-    brain->log->setTimeNow();
-    brain->log->log("field/chaseTarget",
-             rerun::LineStrips2D({
-                                     rerun::Collection<rerun::Vec2D>{{target_f.x - 0.5, -target_f.y}, {target_f.x + 0.5, -target_f.y}},
-                                     rerun::Collection<rerun::Vec2D>{{target_f.x, -target_f.y - 0.5}, {target_f.x, -target_f.y + 0.5}},
-                                 })
-                 .with_colors({0x0000FFFF})
-                 .with_radii({0.05})
-                 .with_draw_order(30));
+    bool avoidObstacle = false;
+    double oaSafeDist = 2.0;
+    brain->get_parameter("obstacle_avoidance.avoid_during_chase", avoidObstacle);
+    brain->get_parameter("obstacle_avoidance.chase_ao_safe_dist", oaSafeDist);
 
     if (
-        brain->kickValue(brain->data->robotBallAngleToField) < 0 
-        && brain->data->ball.range < 1.0
-        && fabs(ballYaw) < 0.2
-        ) vx = min(vx, 0.3); // 避免乌龙, 接近球时, 如果方向不对, 就限制一下速度
+        brain->config->limitNearBallSpeed
+        && brain->data->ball.range < brain->config->nearBallRange
+    ) {
+        vxLimit = min(brain->config->nearBallSpeedLimit, vxLimit);
+    }
 
-    double linearFactor = sigmoid((targetRange * fabs(targetYaw)), 1, 2); // 距离远且角度大时, 减小转弯半径
-    vx *= linearFactor;
-    vy *= linearFactor;
+    double ballRange = brain->data->ball.range;
+    double ballYaw = brain->data->ball.yawToRobot;
+    double kickDir = brain->data->kickDir;
+    double theta_br = atan2(
+        brain->data->robotPoseToField.y - brain->data->ball.posToField.y,
+        brain->data->robotPoseToField.x - brain->data->ball.posToField.x
+    );
+    double theta_rb = brain->data->robotBallAngleToField;
+    auto ballPos = brain->data->ball.posToField;
+
+    double vx, vy, vtheta;
+    Pose2D target_f, target_r;
+    static string targetType = "direct";
+    static double circleBackDir = 1.0;
+    double dirThreshold = M_PI / 2;
+    if (targetType == "direct") dirThreshold *= 1.2;
+
+    if (fabs(toPInPI(kickDir - theta_rb)) < dirThreshold) {
+        targetType = "direct";
+        target_f.x = ballPos.x - dist * cos(kickDir);
+        target_f.y = ballPos.y - dist * sin(kickDir);
+    } else {
+        targetType = "circle_back";
+        double cbDirThreshold = -0.2 * circleBackDir;
+        circleBackDir = toPInPI(theta_br - kickDir) > cbDirThreshold ? 1.0 : -1.0;
+        double tanTheta = theta_br + circleBackDir * acos(min(1.0, safeDist / max(ballRange, 1e-5)));
+        target_f.x = ballPos.x + safeDist * cos(tanTheta);
+        target_f.y = ballPos.y + safeDist * sin(tanTheta);
+    }
+
+    target_r = brain->data->field2robot(target_f);
+    double targetDir = atan2(target_r.y, target_r.x);
+    double distToObstacle = brain->distToObstacle(targetDir);
+    if (avoidObstacle && distToObstacle < oaSafeDist) {
+        auto avoidDir = brain->calcAvoidDir(targetDir, oaSafeDist);
+        const double speed = 0.5;
+        vx = speed * cos(avoidDir);
+        vy = speed * sin(avoidDir);
+        vtheta = ballYaw;
+    } else {
+        vx = min(vxLimit, ballRange);
+        vy = 0;
+        vtheta = targetDir;
+        if (fabs(targetDir) < 0.1 && ballRange > 2.0) vtheta = 0.0;
+        vx *= sigmoid(fabs(vtheta), 1, 3);
+    }
 
     vx = cap(vx, vxLimit, -vxLimit);
     vy = cap(vy, vyLimit, -vyLimit);
     vtheta = cap(vtheta, vthetaLimit, -vthetaLimit);
 
-    brain->client->setVelocity(vx, vy, vtheta, false, false, false);
+    brain->client->setVelocity(vx, vy, vtheta);
     return NodeStatus::SUCCESS;
 }
 
@@ -509,75 +501,88 @@ NodeStatus GoToFreekickPosition::onRunning() {
         // brain->log->log("debug/GoToFreekickPosition", rerun::TextLog(msg));
     };
     log("running");
-    // if (!brain->tree->getEntry<bool>("ball_location_known")) {
-    //      brain->client->setVelocity(0, 0, 0);
-    //      return NodeStatus::SUCCESS;
-    // }
 
     string side;
     getInput("side", side);
-    if (side !="attack" && side != "defense") return NodeStatus::SUCCESS;
-     
-    Pose2D targetPose;
-    auto fd = brain->config->fieldDimensions;
-    auto ballPos = brain->data->ball.posToField;
-    auto robotPose = brain->data->robotPoseToField;
+    if (side != "attack" && side != "defense") return NodeStatus::SUCCESS;
 
-    double kickDir = brain->data->kickDir;
-    double defenseDir = atan2(ballPos.y, ballPos.x + fd.length / 2);
+    Pose2D targetPose = {0.0, 0.0, 0.0};
+    const auto fd = brain->config->fieldDimensions;
+    const auto ballPos = brain->data->ball.posToField;
+    const auto robotPose = brain->data->robotPoseToField;
+    const double ownGoalX = -fd.length / 2.0;
+    const double oppGoalX = fd.length / 2.0;
+
+    const double kickDir = brain->data->kickDir;
+    const double defenseDir = atan2(ballPos.y, ballPos.x + fd.length / 2.0);
+    // 和 assist 对齐：freekick 按 tmMyCostRank 分工，不再按前锋序号。
+    const int rank = brain->data->tmMyCostRank;
     if (side == "attack") {
-       double dist;
-       getInput("attack_dist", dist);
+        double attackDist = 0.7;
+        getInput("attack_dist", attackDist);
 
-       if (brain->data->myStrikerIDRank == 0) {
-        targetPose.x = ballPos.x - dist * cos(kickDir);
-        targetPose.y = ballPos.y - dist * sin(kickDir);
-        targetPose.theta = kickDir;
-       } else if (brain->data->myStrikerIDRank == 1) {
-        targetPose.x = ballPos.x - 2.0 * cos(defenseDir);
-        targetPose.y = ballPos.y - 2.0 * sin(defenseDir);
-        targetPose.theta = defenseDir;
-        } else if (brain->data->myStrikerIDRank == 2) {
-            targetPose.x = - fd.length / 2.0 + fd.penaltyDist;
-            targetPose.y = fd.goalAreaWidth / 2.0;
-        } else if (brain->data->myStrikerIDRank == 3) {
-            targetPose.x = - fd.length / 2.0 + fd.penaltyDist;
-            targetPose.y = - fd.goalAreaWidth / 2.0;
-        }
-    } else if (side == "defense") {
-        if (brain->data->myStrikerIDRank == 0) {
+        if (rank == 0) {
+            targetPose.x = ballPos.x - attackDist * cos(kickDir);
+            targetPose.y = ballPos.y - attackDist * sin(kickDir);
+            targetPose.theta = kickDir;
+        } else if (rank == 1) {
             targetPose.x = ballPos.x - 2.0 * cos(defenseDir);
-            targetPose.y = ballPos.y - 1.5 * sin(defenseDir);
-            targetPose.theta = defenseDir;
-           } else if (brain->data->myStrikerIDRank == 1) {
-            targetPose.x = ballPos.x - 1.5 * cos(defenseDir);
             targetPose.y = ballPos.y - 2.0 * sin(defenseDir);
             targetPose.theta = defenseDir;
-            } else if (brain->data->myStrikerIDRank == 2) {
+        } else if (rank == 2) {
+            targetPose.x = - fd.length / 2.0 + fd.penaltyDist;
+            targetPose.y = fd.goalAreaWidth / 2.0;
+        } else { // rank >= 3
+            targetPose.x = - fd.length / 2.0 + fd.penaltyDist;
+            targetPose.y = - fd.goalAreaWidth / 2.0;
+            log(format("freekick attack fallback, rank=%d", rank));
+        }
+    } else if (side == "defense") {
+        if (rank == 0) {
+            targetPose.x = ballPos.x - 3.0 * cos(defenseDir);
+            targetPose.y = ballPos.y - 2.5 * sin(defenseDir);
+            targetPose.theta = defenseDir;
+           } else if (rank == 1) {
+            targetPose.x = ballPos.x - 3.5 * cos(defenseDir);
+            targetPose.y = ballPos.y - 4.0 * sin(defenseDir);
+            targetPose.theta = defenseDir;
+            } else if (rank == 2) {
                 targetPose.x = - fd.length / 2.0 + fd.penaltyDist;
                 targetPose.y = fd.goalAreaWidth / 2.0;
-            } else if (brain->data->myStrikerIDRank == 3) {
+            } else { // rank >= 3
                 targetPose.x = - fd.length / 2.0 + fd.penaltyDist;
                 targetPose.y = - fd.goalAreaWidth / 2.0;
+                log(format("freekick defense fallback, rank=%d", rank));
         }
     }
 
-    double dist = norm(targetPose.x - robotPose.x, targetPose.y - robotPose.y);
-    double deltaDir = toPInPI(targetPose.theta - robotPose.theta);
+    // 场地约束（对齐 assist 思路）：保证目标点始终在可行区域。
+    targetPose.x = cap(targetPose.x, oppGoalX - 0.3, ownGoalX + 0.3);
+    targetPose.y = cap(targetPose.y, fd.width / 2.0 - 0.6, -fd.width / 2.0 + 0.6);
+    // 对 rank>=2 的固定后场位，朝向球更稳定。
+    if (rank >= 2) {
+        targetPose.theta = atan2(ballPos.y - targetPose.y, ballPos.x - targetPose.x);
+    }
 
-    // brain->log->log("debug/freekick_position/dist", rerun::Scalar(dist));
-    // brain->log->log("debug/freekick_position/deltaDir", rerun::Scalar(deltaDir));
+    const double dist = norm(targetPose.x - robotPose.x, targetPose.y - robotPose.y);
+    const double deltaDir = toPInPI(targetPose.theta - robotPose.theta);
 
     if ( // 认为到达了目标位置
-        dist < 0.2 
-        && fabs(deltaDir) < 0.1
+        dist < 0.3
+        && fabs(deltaDir) < 0.15
     ) {
         brain->client->setVelocity(0, 0, 0);
         return NodeStatus::SUCCESS;
     }
 
-    if (!brain->get_parameter("obstacle_avoidance.enable_freekick_avoid").as_bool() || dist < 1.0 || _isInFinalAdjust) {
-        // brain->log->log("debug/freekick_position/onFinalAdjust", rerun::TextLog(format("stage onFinalAdjust: %f", dist)));
+    static bool adjustFreekickCached = false;
+    static bool enableFreekickAvoid = false;
+    if (!adjustFreekickCached) {
+        enableFreekickAvoid = brain->get_parameter("obstacle_avoidance.enable_freekick_avoid").as_bool();
+        adjustFreekickCached = true;
+    }
+
+    if (!enableFreekickAvoid || dist < 1.5 || _isInFinalAdjust) {
         _isInFinalAdjust = true; // 进入最后的微调阶段
         auto targetPose_r = brain->data->field2robot(targetPose);
 
@@ -592,8 +597,8 @@ NodeStatus GoToFreekickPosition::onRunning() {
         // 防止撞到球
         Line path = {robotPose.x, robotPose.y, targetPose.x, targetPose.y};
         if (
-            pointMinDistToLine(Point2D({ballPos.x, ballPos.y}), path) < 0.5
-            && brain->data->ball.range < 1.0
+            pointMinDistToLine(Point2D({ballPos.x, ballPos.y}), path) < 0.7
+            && brain->data->ball.range < 1.2
         ) {
             vx = min(0.0, vx);
             vy = vy >= 0 ? vy + 0.1: vy - 0.1;
@@ -602,21 +607,19 @@ NodeStatus GoToFreekickPosition::onRunning() {
         double vxLimit, vyLimit;
         getInput("vx_limit", vxLimit);
         getInput("vy_limit", vyLimit);
-        vx = cap(vx, vxLimit, -0.4);     // 进一步限速
+        vx = cap(vx, vxLimit, -0.4);         // 进一步限速
         vy = cap(vy, vyLimit, -vyLimit);     // 进一步限速
-         
 
         brain->client->setVelocity(vx, vy, vtheta, false, false, false);
         return NodeStatus::RUNNING;
     }
 
-    double longRangeThreshold = 1.0;
+    double longRangeThreshold = 1.4;
     double turnThreshold = 0.4;
     double vxLimit = 0.6;
     double vyLimit = 0.5;
     double vthetaLimit = 1.5;
     bool avoidObstacle = true;
-    // brain->log->log("debug/freekick_position", rerun::TextLog(format("stage move: targetPose: (%.2f, %.2f, %.2f)", targetPose.x, targetPose.y, targetPose.theta)));
     brain->client->moveToPoseOnField3(targetPose.x, targetPose.y, targetPose.theta, longRangeThreshold, turnThreshold, vxLimit, vyLimit, vthetaLimit, 0.2, 0.2, 0.1, avoidObstacle);
 
     return NodeStatus::RUNNING;
@@ -648,108 +651,21 @@ NodeStatus GoToGoalBlockingPosition::tick() {
     auto ballPos = brain->data->ball.posToField;
     auto robotPose = brain->data->robotPoseToField;
 
-    // 最终要输出的助攻目标点（field 坐标系）：
-    // x/y 用于走位，theta 在这里不参与规划，先置 0。
-    Pose2D targetPose = {0.0, 0.0, 0.0};
+    string curRole = brain->tree->getEntry<string>("player_role");
 
-    // 便于阅读的球场边界变量：
-    // ownGoalX: 我方底线 x，oppGoalX: 对方底线 x。
-    const double ownGoalX = -fd.length / 2.0;
-    const double oppGoalX = fd.length / 2.0;
-
-    // rank 表示“我在控球代价上的排序”（0 最优）。
-    // 用它把 assist 机器人分配到不同职责槽位，避免所有人追同一个点。
-    const int rank = brain->data->tmMyCostRank;
-
-    // 场上人数较多时，允许更激进的前插接应，提升前场传接应效率。
-    // 人少时则偏保守，优先保证后场覆盖。
-    const bool aggressiveAssist = brain->data->liveCount >= 3;
-
-    // 计算“我方球门 -> 球”这条拦截线在给定 x 下对应的 y：
-    // 目的是让 assist 位尽量落在防守/拦截通道上，而不是随机偏移。
-    // 几何上是线性插值：已知 (ownGoalX,0) 与 (ballPos.x, ballPos.y)，求 targetX 对应 targetY。
-    auto calcBlockLineY = [&](double targetX)
-    {
-        const double denom = ballPos.x - ownGoalX;
-        // 球非常靠近我方门线时分母可能接近 0，直接退化到中路，避免数值爆炸。
-        if (fabs(denom) < 1e-6)
-        {
-            return 0.0;
-        }
-        return ballPos.y * (targetX - ownGoalX) / denom;
-    };
-
-    // ----------------- 依据 rank 分配 assist 站位 -----------------
-    // rank 0 在 Assist 状态下通常是瞬时状态（角色切换/只剩单机等），
-    // 这里与 rank 1 合并处理，保证行为稳定且不会跑飞。
-    if (rank <= 1)
-    {
-        // ballInAttackHalf: 球是否已经到达相对更前的区域。
-        // 只有在前场 + 人数够多时，才启用前插接应位。
-        bool ballInAttackHalf = ballPos.x > -fd.circleRadius * 0.5;
-        if (aggressiveAssist && ballInAttackHalf)
-        {
-            // 第一辅助位（更进攻）：
-            // 站到球前方一条接应通道（x 前插 + y 反侧偏移），便于接应/二过一。
-            targetPose.x = ballPos.x + 1.0;
-            targetPose.y = ballPos.y + (ballPos.y >= 0.0 ? -1.2 : 1.2);
-        }
-        else
-        {
-            // 第一辅助位（更稳健）：
-            // 站到球后 2m 的拦截线上，兼顾补位与回防。
-            targetPose.x = ballPos.x - 2.0;
-            targetPose.y = calcBlockLineY(targetPose.x);
-        }
-        // 无论进攻还是保守，都不能退到我方底线内侧（避免贴门线站位）。
-        targetPose.x = max(targetPose.x, ownGoalX + distToGoalline);
-
-        // rank==0 属于异常/过渡态，打印日志便于赛后排查通信或状态抖动。
-        if (rank == 0)
-            log("tmMyCostRank == 0, fallback to rank1 assist behavior");
-    }
-    else if (rank == 2)
-    {
-        // 第二辅助位：
-        // 相比第一辅助位更靠后，承担“二次接应 + 转移保护”角色。
-        targetPose.x = ballPos.x - (aggressiveAssist ? 0.8 : 1.2);
-        // 至少保持在我方禁区外一定距离，防止被球牵引回撤过深。
-        targetPose.x = max(targetPose.x, ownGoalX + fd.penaltyAreaLength + 0.2);
-        // y 方向只跟随 60%，减少来回横摆，提升队形稳定性。
-        targetPose.y = ballPos.y * 0.6;
-    }
-    else if (rank == 3)
-    {
-        // 第三辅助位（偏防守）：
-        // 站在我方门区前沿附近，优先做安全兜底。
-        targetPose.x = ownGoalX + fd.goalAreaLength;
-        // 若球在我方更靠后位置，则跟着球再回撤一点，保持“在球后”关系。
-        if (targetPose.x > ballPos.x)
-            targetPose.x = ballPos.x - 0.5;
-        targetPose.y = calcBlockLineY(targetPose.x);
-    }
-    else
-    {
-        // rank >= 4 兜底（例如人数很多或排序异常）：
-        // 采用保守防守位，确保 targetPose 总是有定义，避免未初始化风险。
-        targetPose.x = ownGoalX + fd.goalAreaLength;
-        if (targetPose.x > ballPos.x)
-            targetPose.x = ballPos.x - 0.5;
-        targetPose.y = calcBlockLineY(targetPose.x);
-        log(format("tmMyCostRank=%d, use fallback assist position", rank));
+    Pose2D targetPose;
+    targetPose.x = curRole == "striker" ? (std::max(- fd.length / 2.0 + distToGoalline, ballPos.x - 1.5))
+            : (- fd.length / 2.0 + distToGoalline);
+    if (ballPos.x + fd.length / 2.0 < distToGoalline) {
+        targetPose.y = curRole == "striker" ? (ballPos.y > 0 ? fd.goalWidth / 2.0 : -fd.goalWidth / 2.0)
+            : (ballPos.y > 0 ? fd.goalWidth / 4.0 : -fd.goalWidth / 4.0);
+    } else {
+        targetPose.y = ballPos.y * distToGoalline / (ballPos.x + fd.length / 2.0);
+        targetPose.y = curRole == "striker" ? (cap(targetPose.y, fd.goalWidth / 2.0, -fd.goalWidth / 2.0))
+            : (cap(targetPose.y, fd.penaltyAreaWidth/ 2.0, -fd.penaltyAreaWidth / 2.0));
     }
 
-    // ----------------- 最终场地约束（硬限位） -----------------
-    // x:
-    // - 上限：不要压进对方禁区太深（避免越位式扎堆和回防距离过长）
-    // - 下限：不要贴我方底线（保持最小防线空间）
-    targetPose.x = cap(targetPose.x, oppGoalX - fd.penaltyAreaLength - 0.2, ownGoalX + distToGoalline);
-
-    // y:
-    // - 保持在边线内侧安全余量，避免贴边导致避障/定位抖动。
-    targetPose.y = cap(targetPose.y, fd.width / 2.0 - 0.7, -fd.width / 2.0 + 0.7);
     double dist = norm(targetPose.x - robotPose.x, targetPose.y - robotPose.y);
-
     if ( // 认为到达了目标位置
         dist < distTolerance
         && fabs(brain->data->ball.yawToRobot) < thetaTolerance
@@ -789,22 +705,56 @@ NodeStatus Assist::tick() {
     auto fd = brain->config->fieldDimensions;
     auto ballPos = brain->data->ball.posToField;
     auto robotPose = brain->data->robotPoseToField;
-    string curRole = brain->tree->getEntry<string>("player_role");
+    Pose2D targetPose = {0.0, 0.0, 0.0};
 
-    Pose2D targetPose;
-    if (brain->data->tmMyCostRank == 1) {
+    const double ownGoalX = -fd.length / 2.0;
+    const double oppGoalX = fd.length / 2.0;
+    const int rank = brain->data->tmMyCostRank;
+    const bool aggressiveAssist = brain->data->liveCount >= 3; // 3 人以上时，允许更积极的前插接应
+
+    auto calcBlockLineY = [&](double targetX) {
+        const double denom = ballPos.x - ownGoalX;
+        if (fabs(denom) < 1e-6) {
+            return 0.0;
+        }
+        return ballPos.y * (targetX - ownGoalX) / denom;
+    };
+
+    // rank 0 在 Assist 状态下是异常情况（通常是只剩我自己或切换瞬间），这里退化为 rank 1 逻辑.
+    // 
+    if (brain->data->tmMyCostRank == 0) {
+        // Bug 修复：当没有队友在线（或我是 cost 最低的）时，也需要计算防守位置
+        // 这种情况发生在：队友被罚下，但我仍然处于 Assist 状态
         targetPose.x = ballPos.x - 2.0;
         targetPose.x = max(targetPose.x, - fd.length / 2.0 + distToGoalline); // 不要太接近底线
         targetPose.y = ballPos.y * (targetPose.x + fd.length / 2.0) / (ballPos.x + fd.length / 2.0); // 可以挡住球的位置
-    } else if (brain->data->tmMyCostRank == 2) {
-        targetPose.x = -fd.length / 2.0 + fd.penaltyDist;
+        log("tmMyCostRank == 0, using default assist position");
+    } else if (brain->data->tmMyCostRank == 1) {
+        targetPose.x = ballPos.x - 2.0;
+        targetPose.x = max(targetPose.x, - fd.length / 2.0 + distToGoalline); // 不要太接近底线
+        targetPose.y = ballPos.y * (targetPose.x + fd.length / 2.0) / (ballPos.x + fd.length / 2.0); // 可以挡住球的位置
+    } else if (brain->data->tmMyCostRank == 2) {  //todo 之后的assist时候的tmMyCostRank不考虑守门员的cost
+        // targetPose.x = ballPos.x - 2.0;
+        // targetPose.x = max(targetPose.x, - fd.length / 2.0 + distToGoalline); // 不要太接近底线
+        // targetPose.y = ballPos.y * (targetPose.x + fd.length / 2.0) / (ballPos.x + fd.length / 2.0); // 可以挡住球的位置
+        targetPose.x = -fd.length / 2.0 + fd.penaltyAreaLength + 1;
         if (targetPose.x > ballPos.x) targetPose.x = ballPos.x - 1.0;
         targetPose.y = ballPos.y * (targetPose.x + fd.length / 2.0) / (ballPos.x + fd.length / 2.0); // 可以挡住球的位置
     } else if (brain->data->tmMyCostRank == 3) {
-        targetPose.x = -fd.length / 2.0 + fd.goalAreaLength;
+        targetPose.x = -fd.length / 2.0 + fd.penaltyAreaLength;
         if (targetPose.x > ballPos.x) targetPose.x = ballPos.x - 0.5;
         targetPose.y = ballPos.y * (targetPose.x + fd.length / 2.0) / (ballPos.x + fd.length / 2.0); // 可以挡住球的位置
+    } else {
+        // tmMyCostRank >= 4 的情况，使用默认防守位置
+        targetPose.x = -fd.length / 2.0 + fd.penaltyDist;
+        if (targetPose.x > ballPos.x) targetPose.x = ballPos.x - 0.5;
+        targetPose.y = ballPos.y * (targetPose.x + fd.length / 2.0) / (ballPos.x + fd.length / 2.0);
+        log(format("tmMyCostRank = %d, using fallback position", brain->data->tmMyCostRank));
     }
+
+    // 场地约束：防止辅助位冲出边界或压到对方禁区深处.
+    targetPose.x = cap(targetPose.x, oppGoalX - fd.penaltyAreaLength - 0.2, ownGoalX + distToGoalline);
+    targetPose.y = cap(targetPose.y, fd.width / 2.0 - 0.7, -fd.width / 2.0 + 0.7);
      
     double dist = norm(targetPose.x - robotPose.x, targetPose.y - robotPose.y);
     if ( // 认为到达了目标位置
@@ -859,39 +809,56 @@ NodeStatus Adjust::tick()
     }
 
     double turnThreshold, vxLimit, vyLimit, vthetaLimit, range;
+    double stFar, stNear, vthetaFactor, nearThreshold, noTurnThreshold, turnFirstThreshold;
     getInput("turn_threshold", turnThreshold);
     getInput("vx_limit", vxLimit);
     getInput("vy_limit", vyLimit);
     getInput("vtheta_limit", vthetaLimit);
     getInput("range", range);
+    getInput("tangential_speed_far", stFar);
+    getInput("tangential_speed_near", stNear);
+    getInput("vtheta_factor", vthetaFactor);
+    getInput("near_threshold", nearThreshold);
+    getInput("no_turn_threshold", noTurnThreshold);
+    turnFirstThreshold = turnThreshold;
+    getInput("turn_first_threshold", turnFirstThreshold);
     string position;
     getInput("position", position);
 
     double vx = 0, vy = 0, vtheta = 0;
-    double kickDir = (position == "defense") ? 
-        atan2(brain->data->ball.posToField.y, brain->data->ball.posToField.x + brain->config->fieldDimensions.length / 2) 
+    double kickDir = (position == "defense") ?
+        atan2(brain->data->ball.posToField.y, brain->data->ball.posToField.x + brain->config->fieldDimensions.length / 2)
         : brain->data->kickDir;
-    double dir_rb_f = brain->data->robotBallAngleToField; // 机器人到球, field 坐标系中的方向
+    double dir_rb_f = brain->data->robotBallAngleToField;
     double deltaDir = toPInPI(kickDir - dir_rb_f);
+    double ballRange = brain->data->ball.range;
     double ballYaw = brain->data->ball.yawToRobot;
 
-    if (fabs(deltaDir) > M_PI / 3) { // 角度差太大, 仅横移, 以防止碰到球
-        double dir = deltaDir > 0 ? -1.0 : 1.0;
-        vx = 0;
-        vy = dir * vyLimit;
-        vtheta = ballYaw * 2;
-    } else { // 角度差不大时, 以平移为主. 除非与球的夹角过大, 就调整一下.
-        Pose2D target_f = {
-            brain->data->ball.posToField.x - range * cos(kickDir),
-            brain->data->ball.posToField.y - range * sin(kickDir),
-            0.0};
-        
-        auto target_r = brain->data->field2robot(target_f);
-        vx = target_r.x;
-        vy = target_r.y;
-        if (fabs(ballYaw) > turnThreshold) vtheta = ballYaw * 2;
-        else vtheta = 0.0;
+    double st = stFar;
+    if (fabs(deltaDir) * ballRange < nearThreshold) {
+        st = stNear;
     }
+
+    double thetaRobotField = brain->data->robotPoseToField.theta;
+    double tangentialDirRobot = dir_rb_f + M_PI / 2 * (deltaDir > 0 ? -1.0 : 1.0) - thetaRobotField;
+    double radialDirRobot = dir_rb_f - thetaRobotField;
+    double sr = cap(ballRange - range, 0.5, 0.0);
+
+    vx = st * cos(tangentialDirRobot) + sr * cos(radialDirRobot);
+    vy = st * sin(tangentialDirRobot) + sr * sin(radialDirRobot);
+    vtheta = ballYaw * vthetaFactor;
+
+    if (fabs(ballYaw) < noTurnThreshold) {
+        vtheta = 0.0;
+    }
+    if (fabs(ballYaw) > turnFirstThreshold && fabs(deltaDir) < M_PI / 4) {
+        vx = 0;
+        vy = 0;
+    }
+
+    vx = cap(vx, vxLimit, -0.0);
+    vy = cap(vy, vyLimit, -vyLimit);
+    vtheta = cap(vtheta, vthetaLimit, -vthetaLimit);
 
     brain->client->setVelocity(vx, vy, vtheta, false, true, false);
     return NodeStatus::SUCCESS;
@@ -990,7 +957,14 @@ NodeStatus StrikerDecide::tick() {
     getInput("decision_in", lastDecision);
     getInput("position", position);
 
-    // 自动视觉踢球相关参数已移除，当前仅保留基础追球与踢球逻辑
+    bool enableAutoVisualKick = false;
+    brain->get_parameter("strategy.enable_auto_visual_kick", enableAutoVisualKick);
+    double autoVisualKickEnableDistMin = 0.2;
+    double autoVisualKickEnableDistMax = 4.0;
+    double autoVisualKickEnableAngle = 0.8;
+    brain->get_parameter("strategy.auto_visual_kick_enable_dist_min", autoVisualKickEnableDistMin);
+    brain->get_parameter("strategy.auto_visual_kick_enable_dist_max", autoVisualKickEnableDistMax);
+    brain->get_parameter("strategy.auto_visual_kick_enable_angle", autoVisualKickEnableAngle);
 
     double kickDir = brain->data->kickDir;
     double dir_rb_f = brain->data->robotBallAngleToField; // 机器人到球, field 坐标系中的方向
@@ -1051,11 +1025,29 @@ NodeStatus StrikerDecide::tick() {
     {
         newDecision = "find";
         color = 0xFFFFFFFF;
+    } else if (
+        enableAutoVisualKick &&
+        brain->data->tmImLead &&
+        brain->data->tmMyCostRank == 0 &&
+        !brain->tree->getEntry<bool>("ball_out") &&
+        !brain->data->lose_ball &&
+        brain->data->tmMyCost < 7.0 &&
+        ballRange < autoVisualKickEnableDistMax &&
+        ballRange > autoVisualKickEnableDistMin &&
+        fabs(ballYaw) < autoVisualKickEnableAngle * 1.3 &&
+        ball.posToField.x > brain->config->fieldDimensions.length / 2 - 14.3 &&
+        fabs(ball.posToField.y) < 5.0 &&
+        brain->data->robotPoseToField.x > brain->config->fieldDimensions.length / 2 - 14.3 &&
+        fabs(brain->data->robotPoseToField.y) < 5.0
+    ) {
+        newDecision = "auto_visual_kick";
+        brain->data->tmImInVisualKick = true;
+        color = 0xFF00FFFF;
     } else if (!brain->data->tmImLead) {
         newDecision = "assist";
         color = 0x00FFFFFF;
-        }
-        else if (ballRange > chaseRangeThreshold * (lastDecision == "chase" ? 0.9 : 1.0))
+    }
+    else if (ballRange > chaseRangeThreshold * (lastDecision == "chase" ? 0.9 : 1.0))
     {
         newDecision = "chase";
         color = 0x0000FFFF;
@@ -1085,6 +1077,10 @@ NodeStatus StrikerDecide::tick() {
     {
         newDecision = "adjust";
         color = 0xFFFF00FF;
+    }
+
+    if (newDecision != "auto_visual_kick") {
+        brain->data->tmImInVisualKick = false;
     }
 
     setOutput("decision_out", newDecision);
@@ -1354,6 +1350,158 @@ NodeStatus Kick::onRunning()
 void Kick::onHalted()
 {
     _startTime -= rclcpp::Duration(100, 0);
+}
+
+
+rclcpp::Time RLVisionKick::_lastExitTime = rclcpp::Time(0, 0, RCL_ROS_TIME);
+
+NodeStatus RLVisionKick::onStart()
+{
+    _startTime = brain->get_clock()->now();
+    _isDecelerating = false;
+    _visionKickStarted = false;
+    _pendingRobocupWalk = false;
+
+    startDecelerate(1000.0);
+    stepDecelerate();
+
+    return NodeStatus::RUNNING;
+}
+
+NodeStatus RLVisionKick::onRunning()
+{
+    auto logExit = [=](const string &msg) {
+        brain->log->setTimeNow();
+        brain->log->log("debug/RLVisionKick", rerun::TextLog(msg));
+        std::cout << "[RLVisionKick] " << msg << std::endl;
+    };
+
+    if (brain->data->shouldExitRLVisionKick) {
+        logExit("exit visual kick: shouldExitRLVisionKick=true");
+        brain->data->shouldExitRLVisionKick = false;
+        brain->data->tmImInVisualKick = false;
+        recordExitTime();
+        return NodeStatus::SUCCESS;
+    }
+
+    if (_isDecelerating) {
+        stepDecelerate();
+
+        if (!_isDecelerating) {
+            if (_pendingRobocupWalk) {
+                brain->client->robocupWalk();
+                _pendingRobocupWalk = false;
+                brain->data->tmImInVisualKick = false;
+                return NodeStatus::SUCCESS;
+            } else if (!_visionKickStarted) {
+                brain->client->RLVisionKick(true);
+                _headScanStartTime = brain->get_clock()->now();
+                _visionKickStarted = true;
+            }
+        }
+        return NodeStatus::RUNNING;
+    }
+
+    if (_visionKickStarted) {
+        double headMsec = brain->msecsSince(_headScanStartTime);
+        if (headMsec < 300.0) {
+            brain->client->moveHead(0.4, 0.0);
+        } else if (headMsec < 550.0) {
+            brain->client->moveHead(0.7, 0.0);
+        }
+    }
+
+    double elapsed = brain->msecsSince(_startTime);
+    double minMsecKick = getInput<double>("min_msec_kick").value();
+    double maxMsecKick = getInput<double>("max_msec_kick").value();
+    double rangeThreshold = getInput<double>("range").value();
+
+    bool ballTooFar = brain->data->ballDetected && brain->data->ball.range > rangeThreshold;
+    bool costTooHigh = brain->data->tmMyCost > 8.0;
+    bool elapsedEnough = elapsed > minMsecKick;
+    bool elapsedTimeout = elapsed > maxMsecKick;
+    bool loseBall = brain->data->lose_ball;
+    bool loseBallExit = loseBall && elapsedEnough;
+    bool ballOut = brain->tree->getEntry<bool>("ball_out");
+    bool shouldExit = (((ballTooFar || costTooHigh) && elapsedEnough) || loseBallExit || ballOut || elapsedTimeout);
+
+    if (shouldExit) {
+        string reasons = "";
+        auto appendReason = [&](const string &reason) {
+            if (!reasons.empty()) reasons += ", ";
+            reasons += reason;
+        };
+        if (ballTooFar && elapsedEnough) appendReason(format("ball_too_far(range=%.2f,threshold=%.2f)", brain->data->ball.range, rangeThreshold));
+        if (costTooHigh && elapsedEnough) appendReason(format("tm_cost_high(cost=%.2f,min=%.0fms,elapsed=%.0fms)", brain->data->tmMyCost, minMsecKick, elapsed));
+        if (loseBallExit) appendReason("lose_ball=true");
+        if (ballOut) appendReason("ball_out=true");
+        if (elapsedTimeout) appendReason(format("timeout(max=%.0fms,elapsed=%.0fms)", maxMsecKick, elapsed));
+        if (reasons.empty()) reasons = "unknown";
+        logExit(format("exit visual kick: %s", reasons.c_str()));
+
+        recordExitTime();
+        startDecelerate(1000.0);
+        _pendingRobocupWalk = true;
+        stepDecelerate();
+        return NodeStatus::RUNNING;
+    }
+
+    return NodeStatus::RUNNING;
+}
+
+void RLVisionKick::onHalted()
+{
+    const string haltMsg = "halted by behavior tree, force exit visual kick";
+    brain->log->setTimeNow();
+    brain->log->log("debug/RLVisionKick", rerun::TextLog(haltMsg));
+    std::cout << "[RLVisionKick] " << haltMsg << std::endl;
+    brain->data->tmImInVisualKick = false;
+    brain->client->setVelocity(0.0, 0.0, 0.0, false, false, false);
+    brain->client->robocupWalk();
+    recordExitTime();
+
+    _isDecelerating = false;
+    _visionKickStarted = false;
+    _pendingRobocupWalk = false;
+}
+
+bool RLVisionKick::isMinIntervalSatisfied(double minIntervalMsec)
+{
+    (void)minIntervalMsec;
+    return true;
+}
+
+void RLVisionKick::recordExitTime()
+{
+    _lastExitTime = brain->get_clock()->now();
+}
+
+void RLVisionKick::startDecelerate(double durationMs)
+{
+    if (_isDecelerating) {
+        return;
+    }
+
+    _isDecelerating = true;
+    _decelStartTime = brain->get_clock()->now();
+    _decelDurationMs = durationMs;
+}
+
+bool RLVisionKick::stepDecelerate()
+{
+    if (!_isDecelerating) {
+        return true;
+    }
+
+    double elapsed = brain->msecsSince(_decelStartTime);
+    brain->client->setVelocity(0.0, 0.0, 0.0, false, false, false);
+
+    if (elapsed >= _decelDurationMs) {
+        _isDecelerating = false;
+        return true;
+    }
+
+    return false;
 }
 
 
@@ -3124,93 +3272,27 @@ NodeStatus GoToReadyPosition::tick()
     double vthetaLimit = 1.5;
     bool avoidObstacle = true;
 
-    // ----------------- READY 阶段基础站位分配 -----------------
-    // 对 striker：根据 myStrikerIDRank（前锋序号）分配不同槽位。
-    // 设计目标：
-    // 1) 开球/非开球时给主攻手不同前压深度；
-    // 2) 其余前锋分布在中后场，避免同点聚集；
-    // 3) rank 异常时必须有稳定兜底，不能回退到默认 (0,0)。
-    if (role == "striker")
-    {
-        // rank: 我在 striker 队列里的序号（通常由 player_id 与队友角色共同决定）。
-        const int rank = brain->data->myStrikerIDRank;
-        if (rank == 0)
-        {
-            // 主 striker：位于中路偏前，非开球时稍后撤（-2R）以保持阵型弹性。
-            tx = isKickoff ? -fd.circleRadius : -fd.circleRadius * 2;
+    if (role == "striker") {
+        if (brain->data->myStrikerIDRank == 0) {
+            tx = isKickoff ? - fd.circleRadius : - fd.circleRadius * 2;
             ty = 0.0;
-        }
-        else if (rank == 1)
-        {
-            // 次 striker：与主 striker 同 x 深度，但在 y 轴拉开，形成双前点。
-            tx = isKickoff ? -fd.circleRadius : -fd.circleRadius * 2;
+        } else if (brain->data->myStrikerIDRank == 1) {
+            tx = isKickoff ? - fd.circleRadius : - fd.circleRadius * 2;
             ty = -1.5;
+        } else if (brain->data->myStrikerIDRank == 2) {
+            //tx = - fd.length / 2.0 + fd.penaltyDist;
+            //ty = fd.goalAreaWidth / 2.0;
+            tx = - fd.length / 2.0 + fd.penaltyAreaLength;
+            ty = fd.circleRadius;
+        } else if (brain->data->myStrikerIDRank == 3) {
+            tx = - fd.length / 2.0 + fd.penaltyDist;
+            ty = - fd.circleRadius - 1.0;
+            //ty = - fd.goalAreaWidth / 2.0;
         }
-        else if (rank == 2)
-        {
-            // 第三 striker：站在我方半场中后区域，承担过渡接应/回防过渡职责。
-            tx = -fd.length / 2.0 + fd.penaltyAreaLength;
-            ty = fd.circleRadius / 2.0;
-        }
-        else if (rank == 3)
-        {
-            // 第四 striker：与 rank=2 在纵向镜像，进一步拉开覆盖宽度。
-            tx = -fd.length / 2.0 + fd.penaltyDist;
-            ty = -fd.circleRadius / 2.0;
-        }
-        else
-        {
-            // 兜底：rank 异常(如通信瞬时丢失导致重复/越界)时不要退化到(0,0)。
-            // 用 playerId 奇偶把机器人分到左右两侧，至少保证不会所有人挤中路。
-            tx = -fd.length / 2.0 + fd.penaltyDist;
-            ty = (brain->config->playerId % 2 == 0 ? 1.0 : -1.0) * fd.circleRadius / 2.0;
-        }
-    }
-    else if (role == "goal_keeper")
-    {
-        // 对 goalie：固定在门区前沿中路，朝向正前方（ttheta=0）。
+    } else if (role == "goal_keeper") {
         tx = -fd.length / 2.0 + fd.goalAreaLength;
         ty = 0;
         ttheta = 0;
-    }
-
-    // 进一步防挤占：若目标点附近已有队友，则按固定偏移寻找一个空位。
-    auto isCrowded = [&](double x, double y, double radius)
-    {
-        // 遍历全部可能队友槽位（包含未上场编号），过滤掉自己和离线队友。
-        // 只要有任意在线队友落在半径 radius 内，就认为该候选点“拥挤”。
-        for (int i = 0; i < HL_MAX_NUM_PLAYERS; i++)
-        {
-            if (i + 1 == brain->config->playerId)
-                continue;
-            const auto &tm = brain->data->tmStatus[i];
-            if (!tm.isAlive)
-                continue;
-            if (norm(tm.robotPoseToField.x - x, tm.robotPoseToField.y - y) < radius)
-            {
-                return true;
-            }
-        }
-        return false;
-    };
-    if (role == "striker" && isCrowded(tx, ty, 0.8))
-    {
-        // 仅对 striker 启用二次错位：
-        // 在当前 x 保持不变的前提下，按一组离散 y 偏移尝试“最近空位”。
-        // 顺序从 0 开始，表示优先保留原目标；若拥挤再逐步向上下扩展。
-        const vector<double> yOffsets = {0.0, 0.8, -0.8, 1.6, -1.6};
-        double baseY = ty;
-        for (double dy : yOffsets)
-        {
-            // 候选点先做边界裁剪，避免贴边导致控制抖动或越界风险。
-            double candY = cap(baseY + dy, fd.width / 2.0 - 0.6, -fd.width / 2.0 + 0.6);
-            if (!isCrowded(tx, candY, 0.8))
-            {
-                // 找到第一个不拥挤的候选点后立即采用，结束搜索。
-                ty = candY;
-                break;
-            }
-        }
     }
 
     brain->client->moveToPoseOnField2(tx, ty, ttheta, longRangeThreshold, turnThreshold, vxLimit, vyLimit, vthetaLimit, distTolerance / 1.5, distTolerance / 1.5, thetaTolerance, avoidObstacle);
@@ -3288,6 +3370,7 @@ NodeStatus CheckAndStandUp::tick()
         // brain->data->isRecoveryAvailable && // 倒了就直接尝试RL起身，（不需要关注是否recoveryAailable）
         brain->data->currentRobotModeIndex == 1 && // is damping
         brain->data->recoveryPerformedRetryCount < brain->get_parameter("recovery.retry_max_count").get_value<int>()) {
+        brain->data->shouldExitRLVisionKick = true;
         brain->client->standUp();
         brain->data->recoveryPerformed = true;
         brain->speak("Trying to stand up");
@@ -3303,9 +3386,10 @@ NodeStatus CheckAndStandUp::tick()
 
     // 机器人站着且是robocup步态，可以重置跌到爬起的状态
     if (brain->data->recoveryState == RobotRecoveryState::IS_READY &&
-        brain->data->currentRobotModeIndex == 8) { // in robocup gait
+        (brain->data->currentRobotModeIndex == 8 || brain->data->currentRobotModeIndex == 20)) { // in robocup gait
         brain->data->recoveryPerformedRetryCount = 0;
         brain->data->recoveryPerformed = false;
+        brain->data->shouldExitRLVisionKick = false;
         brain->log->log("recovery", rerun::TextLog("Reset recovery, recoveryState: " + to_string(static_cast<int>(brain->data->recoveryState))));
     }
 

@@ -1,29 +1,29 @@
 camera:
   type: realsense
   intrin:
-    fx: 647.678284
-    fy: 646.921448
-    cx: 634.852661
-    cy: 362.221649
+    fx: 642.414673
+    fy: 641.951172
+    cx: 639.024414
+    cy: 353.080536
     distortion_model: 0
     distortion_coeffs:
       []
   extrin:
     -
-      - -0.00624676095
-      - -0.253142178
-      - 0.967408955
-      - -0.0243975222
+      - -0.00287664495
+      - -0.265204221
+      - 0.96418798
+      - -0.0141300689
     -
-      - -0.999977112
-      - -0.000928782858
-      - -0.00670009525
-      - -0.0409320258
+      - -0.999978065
+      - 0.00650897343
+      - -0.00119310198
+      - -0.0292695146
     -
-      - 0.00259458926
-      - -0.967428565
-      - -0.253130555
-      - -0.036067877
+      - -0.00595945911
+      - -0.964170337
+      - -0.265217125
+      - -0.0366915613
     -
       - 0
       - 0
@@ -33,7 +33,7 @@ camera:
   yaw_compensation: 0
   z_compensation: 0
 detection_model:
-  model_path: model/k1_realsense_0120.engine
+  model_path: ./src/vision/model/k1_realsense_0120.engine
   confidence_threshold: 0.2
   nms_threshold: 0.4
   classnames: [Ball, Goalpost, Person, LCross, TCross, XCross, PenaltyPoint, Opponent, BRMarker]
@@ -50,7 +50,7 @@ detection_model:
       Opponent: 0.4
       BRMarker: 0.2
 segmentation_model:
-  model_path: model/best_seg_orin_10.3.engine
+  model_path: ./src/vision/model/best_seg_orin_10.3.engine
   confidence_threshold: 0.3
   nms_threshold: 0.9
 use_depth: true
@@ -78,7 +78,7 @@ calibration:
     zero_translation: true
     field_marker_path: ./src/vision/config/field.yaml
   handeye:
-    calibration_time: 2026-03-21-11-20-05
-    reprojection_error: 2.3121936413291029
+    calibration_time: 2026-04-11-09-47-23
+    reprojection_error: 2.5350552245663476
 misc:
   save_data_nonstationary: true

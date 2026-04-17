@@ -60,12 +60,17 @@ brain_node:
 
       power_shoot:
         enable: false # 在直接任意球和门球时，是否使用大力踢
-        use_for_kickoff: false # 在正常开球时是否使用大力踢
+        use_for_kickoff: true # 在正常开球时是否使用大力踢
         xmin: 1.1 # 大力开球的 x 轴范围，单位：米
         xmax: 1.5 # 大力开球的 x 轴范围，单位：米
         ymin: -0.3 # 大力开球的 y 轴范围，单位：米
         ymax: 0.3 # 大力开球的 y 轴范围，单位：米
-      enable_auto_visual_defend: false # 是否开启自动视觉踢球，如果为 true, 则在一定条件下会进入视觉自动踢球状态  ---NO FUNCTION----
+        enable_auto_visual_kick: true
+      auto_visual_kick_enable_dist_min: 0.2
+      auto_visual_kick_enable_dist_max: 4.0
+      auto_visual_kick_enable_angle: 0.8
+      enable_auto_visual_defend: false
+
       cooperation:
         enable_role_switch: true # 开启后，会根据场上裁判机上存活的队友数量，来自动决定自己的角色。
         ball_control_cost_threshold: 5.0 # 队友踢球的 cost 小于此值时，我不再上前抢球，而是转为助攻
@@ -80,7 +85,7 @@ brain_node:
       exclusion_y: 0.5 # 排除 y 轴（左右方向）范围，即排除机器人自己，此范围外的点视为障碍物
       ball_exclusion_radius: 0.0 # 球周围这个半径内的障碍物认为不是障碍
       ball_exclusion_height: 0.3 # 球周围这个高度内的障碍物认为不是障碍
-      occupancy_threshold: 8 # 障碍物阈值，在世界坐标系的一个网格内，高于指定高度的深度采样点数大于些值，则认为存在障碍物
+      occupancy_threshold: 12 # 障碍物阈值，在世界坐标系的一个网格内，高于指定高度的深度采样点数大于些值，则认为存在障碍物
       collision_threshold: 0.3 # 碰撞阈值，当障碍物与机器人的距离小于此值，则认为发生碰撞，相当于机器人的碰撞半径
       safe_distance: 1.0 # 安全距离，当障碍物距离小于此值时，认为需要避障
       avoid_secs: 2.0 # 避障时，每次绕行障碍物的时长
@@ -107,18 +112,24 @@ brain_node:
       enable_file: true # 是否将 log 写入本地
       log_dir: "/home/booster/Workspace/rrlog" # 本地 log 存储路径，会在此路径下生成以时间为开头的文件
       max_log_file_mins: 5.0 # 本地 log 最长多少分钟就分片存储。太大的文件会导致读的时候死机.
-      img_interval: 2 # 每多少帧图像 log 一次，如果希望更好的实时性或减少日志大小，可以调高这个值。但会造成 log 的时间精度降低.
+      img_interval: 3 # 每多少帧图像 log 一次，如果希望更好的实时性或减少日志大小，可以调高这个值。但会造成 log 的时间精度降低.
 
     recovery:
       retry_max_count: 3 # 尝试起身的最大次数，超过这个次数后，认为起身失败，进入 recovery 模式，需要人工干预
 
     vision:
-      image_topic: "/camera/camera/color/image_raw" # RGB 图像的 topic 名称
-      depth_image_topic: "/camera/camera/aligned_depth_to_color/image_raw" # 深度图像的 topic 名称
-      cam_pixel_width: 1280. # 相机像素宽度
-      cam_pixel_height: 720. # 相机像素高度
-      cam_fov_x: 90.0 # 相机视场角，单位：度
-      cam_fov_y: 60.0 # 相机视场角，单位：度
+      image_topic: "/camera/camera/color/image_raw" #realsense
+      depth_image_topic: "/camera/camera/aligned_depth_to_color/image_raw" #realsense
+      # image_topic: "/image_left_raw" # d-robotics
+      # depth_image_topic: "/image_left_raw/camera_info" # d-robotics
+      # cam_pixel_width: 544. # 相机像素宽度, d-robotics
+      # cam_pixel_height: 448. # 相机像素高度, d-robotics
+      cam_pixel_width: 1280. # 相机像素宽度 realsense
+      cam_pixel_height: 720. # 相机像素高度 realsense
+      cam_fov_x: 90.0 # 相机视场角, 单位: 度 realsense
+      cam_fov_y: 60.0 # 相机视场角, 单位: 度 realsense
+      # cam_fov_x: 69.4 # 相机视场角, 单位: 度, d-robotics
+      # cam_fov_y: 42.5 # 相机视场角, 单位: 度, d-robotics    
 
 
     debug:

@@ -164,8 +164,8 @@ void CalibrationNode::Init(const std::string cfg_path, bool is_offline, std::str
         color_topic = "/zed/zed_node/left/image_rect_color";
         intrin_topic = "/zed/zed_node/left/camera_info";
     } else if (camera_type_ == "d-robotics") {
-        color_topic = "/booster_camera_bridge/StereoNetNode/rectified_image";
-        intrin_topic = "/booster_camera_bridge/image_left_raw/camera_info";
+        color_topic = "/image_left_raw";
+        intrin_topic = "/image_left_raw/camera_info";
     } else if (camera_type_ == "orbbec") {
         color_topic = "/camera/color/image_raw";
         intrin_topic = "/camera/color/camera_info";
@@ -379,7 +379,7 @@ void CalibrationNode::RunExtrinsicCalibrationProcess(const SyncedDataBlock &data
             } else {
                 std::cout << "not overwrite input config" << std::endl;
             }
-
+            
             // New: ask to save to system directory
             std::cout << "save calibration result to /opt/booster/vision.yaml? y/n" << std::endl;
             char key_sys;
