@@ -582,15 +582,17 @@ void Brain::handleCooperation() {
                 minDist = dist;
             }
         }
-        if (minIndex >= 0 && myDist > maxDist) {
+        string decision = tree->getEntry<string>("decision");
+        bool goalieWantsToAttack = (decision == "chase" || decision == "kick");
+        if (minIndex >= 0 && (myDist > maxDist || goalieWantsToAttack)) {
             data->tmLastCmdChangeTime = get_clock()->now();
             data->tmMyCmd = 10 + minIndex + 1; 
             data->tmCmdId += 1;
             data->tmMyCmdId = data->tmCmdId;
             tree->setEntry<string>("player_role", "striker");
-            log_(format("goalie: i am too far from goal, i ask player %d to attack", minIndex + 1));
+            log_(format("goalie: i am attacking (decision: %s), i ask player %d to defend", decision.c_str(), minIndex + 1));
         } else {
-            log_(format("goalie: i am close enough to goal, no need to attack, my dist: %.2f", myDist));
+            log_(format("goalie: no need to attack yet, my dist: %.2f, decision: %s", myDist, decision.c_str()));
         }
     }
 
@@ -842,7 +844,7 @@ void Brain::updateCostToKick() {
     }
 
 
-    cost += fabs(data->ball.yawToRobot) / 1.0; 
+    cost += fabs(data->ball.yawToRobot) / 0.7; 
     log_(format("ball yaw cost: %.1f", fabs(data->ball.yawToRobot) / 1.0));
 
 

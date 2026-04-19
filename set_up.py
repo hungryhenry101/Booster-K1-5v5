@@ -41,22 +41,22 @@ def gen_quickstart_sh():
     os.chmod(target, 0o755)
     print("已创建快速启动 1.sh")
 
-def copy_latest_vision_config():
-    """复制手眼标定配置文件"""
-    target_config = os.path.join(script_dir, "src", "vision", "config", "vision.yaml")
-    source_config = "/opt/booster/vision.yaml"
+# def copy_latest_vision_config():
+#     """复制手眼标定配置文件"""
+#     target_config = os.path.join(script_dir, "src", "vision", "config", "vision.yaml")
+#     source_config = "/opt/booster/vision.yaml"
 
-    if not os.path.exists(source_config):
-        print(f"⚠️  最新标定文件夹中找不到 vision_local.yaml: {source_config}")
-        return
+#     if not os.path.exists(source_config):
+#         print(f"⚠️  最新标定文件夹中找不到 vision_local.yaml: {source_config}")
+#         return
 
-    # 确保目标目录存在
-    target_dir = os.path.dirname(target_config)
-    if not os.path.exists(target_dir):
-        os.makedirs(target_dir)
+#     # 确保目标目录存在
+#     target_dir = os.path.dirname(target_config)
+#     if not os.path.exists(target_dir):
+#         os.makedirs(target_dir)
 
-    shutil.copy2(source_config, target_config)
-    print(f"✅ 已复制最新手眼标定配置：/opt/booster/vision.yaml → src/vision/config/vision.yaml")
+#     shutil.copy2(source_config, target_config)
+#     print(f"✅ 已复制最新手眼标定配置：/opt/booster/vision.yaml → src/vision/config/vision.yaml")
 
 
 def make_scripts_executable():
@@ -282,13 +282,13 @@ def update_launch_file(game_control_ip):
 
 
 def main():
-    # 首先赋予 scripts 目录下所有文件可执行权限
+    # 赋予 scripts 目录下所有文件可执行权限
     make_scripts_executable()
     print("已赋予 scripts 目录下所有文件可执行权限\n")
 
     # 复制最新的手眼标定配置
-    copy_latest_vision_config()
-    print()
+    # copy_latest_vision_config()
+    # print()
     
     gen_quickstart_sh()
     print()
