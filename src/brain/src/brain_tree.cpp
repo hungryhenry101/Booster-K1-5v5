@@ -1137,7 +1137,7 @@ NodeStatus GoalieDecide::tick()
         newDecision = "find";
         color = 0x0000FFFF;
     }
-    else if (brain->data->ball.posToField.x > 0 - static_cast<double>(lastDecision == "retreat"))
+    else if (!brain->data->tmImLead || brain->data->ball.posToField.x > 0 - static_cast<double>(lastDecision == "retreat"))
     {
         newDecision = "retreat";
         color = 0xFF00FFFF;
