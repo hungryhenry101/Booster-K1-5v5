@@ -3403,42 +3403,45 @@ NodeStatus RoleSwitchIfNeeded::tick()
 {
 
     auto log = [=](string msg) {
-        // brain->log->setTimeNow();
-        // brain->log->log("debug/RoleSwitchIfNeeded", rerun::TextLog(msg));
+        brain->log->setTimeNow();
+        brain->log->log("debug/RoleSwitchIfNeeded", rerun::TextLog(msg));
     };
-    log("RoleSwitchIfNeeded ticked");
 
-    int aliveCount = 0;
-    for (int i = 0; i < HL_MAX_NUM_PLAYERS; i++)
-    {
-        if (brain->data->penalty[i] == PENALTY_NONE)
-            aliveCount++;
-    }
-     
     string oldRole = brain->tree->getEntry<string>("player_role");
     string newRole = oldRole;
-    /**
-     * 策略是，只有满员的时候，才会有守门员，其他时候都参与进攻
-     */
-    if ((aliveCount < brain->config->numOfPlayers) && brain->data->penalty[brain->config->playerId - 1] == PENALTY_NONE)
+
+    // 找到场上存活的（未被罚下）且 ID 最大的机器人，将其设为守门员
+    int lastAliveId = -1;
+    // 只在 brain->config->numOfPlayers 范围内寻找场上存活（未被罚下）且 ID 最大的机器人
+    for (int i = brain->config->numOfPlayers - 1; i >= 0; i--)
     {
-        brain->tree->setEntry<string>("player_role", "striker");
-        newRole = "striker";
+        if (brain->data->penalty[i] == PENALTY_NONE)
+        {
+            lastAliveId = i + 1;
+            break;
+        }
     }
-    else if (aliveCount == brain->config->numOfPlayers - 1) {
-        brain->tree->setEntry<string>("player_role", "goal_keeper");
-        newRole = "goal_keeper";
+
+    if (lastAliveId != -1)
+    {
+        if (brain->config->playerId == lastAliveId){
+            newRole = "goal_keeper";
+        }
+        else{
+            newRole = "striker";
+        }
     }
      
     if (brain->tree->getEntry<string>("gc_game_state") == "INITIAL") {
-        brain->tree->setEntry<string>("player_role", brain->config->playerRole);
         newRole = brain->config->playerRole;
     }
 
     if (newRole != oldRole) {
+        brain->tree->setEntry<string>("player_role", newRole);
         brain->speak("Switch to " + newRole);
     }
     // std::cout << "[MSG] " << brain->tree->getEntry<string>("player_role") << std::endl;
+    log(std::format("RoleSwitchIfNeeded ticked. old role: {}, new role: {}", oldRole, newRole));
 
     return NodeStatus::SUCCESS;
 }
