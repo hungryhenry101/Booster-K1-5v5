@@ -61,6 +61,7 @@ void BrainTree::init()
     REGISTER_BUILDER(SetVelocity)
     REGISTER_BUILDER(StepOnSpot)
     REGISTER_BUILDER(GoToFreekickPosition)
+    REGISTER_BUILDER(ObserveFreekickPositions)
     REGISTER_BUILDER(GoToReadyPosition)
     REGISTER_BUILDER(GoToGoalBlockingPosition)
     REGISTER_BUILDER(TurnOnSpot)
@@ -627,6 +628,69 @@ NodeStatus GoToFreekickPosition::onRunning() {
 
 void GoToFreekickPosition::onHalted() {
     // brain->log->log("debug/freekick_position/onHault", rerun::TextLog(format("stage OnHalted")));
+}
+
+NodeStatus ObserveFreekickPositions::onStart() {
+    const auto fd = brain->config->fieldDimensions;
+    const auto robotPose = brain->data->robotPoseToField;
+
+    double leftX = 0.0;
+    double leftY = fd.width / 2.0;
+    double rightX = 0.0;
+    double rightY = -fd.width / 2.0;
+
+    _targetAngles[0] = atan2(leftY - robotPose.y, leftX - robotPose.x);
+    _targetAngles[1] = atan2(rightY - robotPose.y, rightX - robotPose.x);
+
+    _observeIndex = 0;
+    _timeLastObserve = brain->get_clock()->now();
+
+    brain->client->moveHead(0.8, 0.0);
+
+    double deltaAngle = toPInPI(_targetAngles[0] - robotPose.theta);
+    double vtheta = cap(deltaAngle * 2.0, brain->config->vthetaLimit, -brain->config->vthetaLimit);
+    brain->client->setVelocity(0, 0, vtheta, false, false, true);
+
+    return NodeStatus::RUNNING;
+}
+
+NodeStatus ObserveFreekickPositions::onRunning() {
+    double msecsPerPos = getInput<double>("msecs_per_pos").value();
+    const auto robotPose = brain->data->robotPoseToField;
+    const double vthetaLimit = brain->config->vthetaLimit;
+
+    if (brain->tree->getEntry<bool>("ball_location_known")) {
+        brain->client->setVelocity(0, 0, 0);
+        return NodeStatus::SUCCESS;
+    }
+
+    double deltaAngle = toPInPI(_targetAngles[_observeIndex] - robotPose.theta);
+    const double angleTolerance = 0.2;
+
+    double vtheta = cap(deltaAngle * 2.0, vthetaLimit, -vthetaLimit);
+    brain->client->setVelocity(0, 0, vtheta, false, false, true);
+
+    if (brain->msecsSince(_timeLastObserve) > msecsPerPos) {
+        if (fabs(deltaAngle) < angleTolerance) {
+            _observeIndex++;
+            _timeLastObserve = brain->get_clock()->now();
+
+            if (_observeIndex >= 2) {
+                brain->client->setVelocity(0, 0, 0);
+                return NodeStatus::FAILURE;
+            }
+
+            brain->client->moveHead(0.8, 0.0);
+        } else {
+            _timeLastObserve = brain->get_clock()->now();
+        }
+    }
+
+    return NodeStatus::RUNNING;
+}
+
+void ObserveFreekickPositions::onHalted() {
+    brain->client->setVelocity(0, 0, 0);
 }
 
 NodeStatus GoToGoalBlockingPosition::tick() {

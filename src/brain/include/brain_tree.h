@@ -712,6 +712,21 @@ private:
     bool _isInFinalAdjust = false;
 };
 
+class ObserveFreekickPositions : public StatefulActionNode
+{
+public:
+    ObserveFreekickPositions(const string &name, const NodeConfig &config, Brain *_brain) : StatefulActionNode(name, config), brain(_brain) {}
+    static PortsList providedPorts() { return { InputPort<double>("msecs_per_pos", 1500, "观察每个位置的时间") }; }
+    NodeStatus onStart() override;
+    NodeStatus onRunning() override;
+    void onHalted() override;
+private:
+    Brain *brain;
+    int _observeIndex = 0;
+    rclcpp::Time _timeLastObserve;
+    double _targetAngles[2];
+};
+
 class GoBackInField : public SyncActionNode
 {
 public:
