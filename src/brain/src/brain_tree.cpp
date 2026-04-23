@@ -631,6 +631,10 @@ void GoToFreekickPosition::onHalted() {
 }
 
 NodeStatus ObserveFreekickPositions::onStart() {
+    if (brain->tree->getEntry<bool>("ball_location_known") || brain->tree->getEntry<bool>("tm_ball_pos_reliable")) {
+        return NodeStatus::SUCCESS;
+    }
+
     const auto fd = brain->config->fieldDimensions;
     const auto robotPose = brain->data->robotPoseToField;
 
@@ -659,7 +663,7 @@ NodeStatus ObserveFreekickPositions::onRunning() {
     const auto robotPose = brain->data->robotPoseToField;
     const double vthetaLimit = brain->config->vthetaLimit;
 
-    if (brain->tree->getEntry<bool>("ball_location_known")) {
+    if (brain->tree->getEntry<bool>("ball_location_known") || brain->tree->getEntry<bool>("tm_ball_pos_reliable")) {
         brain->client->setVelocity(0, 0, 0);
         return NodeStatus::SUCCESS;
     }
@@ -677,7 +681,7 @@ NodeStatus ObserveFreekickPositions::onRunning() {
 
             if (_observeIndex >= 2) {
                 brain->client->setVelocity(0, 0, 0);
-                return NodeStatus::FAILURE;
+                return NodeStatus::SUCCESS;
             }
 
             brain->client->moveHead(0.8, 0.0);
