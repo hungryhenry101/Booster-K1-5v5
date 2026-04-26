@@ -72,8 +72,7 @@ brain_node:
       enable_auto_visual_defend: false
 
       cooperation:
-        enable_role_switch: fal
-        se# 开启后，会根据场上裁判机上存活的队友数量，来自动决定自己的角色。
+        enable_role_switch: true # 开启后，会根据场上裁判机上存活的队友数量，来自动决定自己的角色。
         ball_control_cost_threshold: 5.0 # 队友踢球的 cost 小于此值时，我不再上前抢球，而是转为助攻
 
     obstacle_avoidance:
