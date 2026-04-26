@@ -28,7 +28,7 @@ brain_node:
     strategy:
       ball_confidence_threshold: 50.0 # confidence 低于这个阈值，认为不是球
       ball_confidence_decay_rate: 3.0 # 看到 confidence 为 100 的球后，多少秒没有再看到，则认为球丢了
-      enable_stable_kick: false # 开启后，在 kick 时，如风险较低，则稳定一下再出脚
+      enable_stable_kick: false # 开启后，在 kick 时，如风险较低，则稳定一下再出脚 !!--> unused in yaml, can edit by searching `enableStableKick`
       ball_memory_timeout: 3.0 # 球记忆失效时间，超过这个时间，认为球丢了
       tm_ball_dist_threshold: 0.5  # 队友发送的球的位置与我当前位置的距离，如果大于此值，则认为队友的信息准确.
       limit_near_ball_speed: false # 是否限制在 chase 时靠近球时的速度
@@ -49,7 +49,7 @@ brain_node:
       enable_directional_kick: false # 为 true 时，在方向合适时会通过斜向踢球来将球往对方球门踢   ---NO FUNCTION----
       use_squat_block: true # 是否使用蹲下挡球策略，如果为 true, 则守门员会蹲下挡球，否则只会站立挡球
       squat_block_msecs: 2000.0 # 蹲下挡球的时间，单位：毫秒
-      use_move_block: false # 是否使用移动挡球策略，如果为 true, 则守门员依据对球路的预测，提前向挡球位置移动，如 false, 则只会向球的当前位置移动.  !!!TODO: WORTH TESTING
+      use_move_block: true # 是否使用移动挡球策略，如果为 true, 则守门员依据对球路的预测，提前向挡球位置移动，如 false, 则只会向球的当前位置移动.  !!!TODO: WORTH TESTING
       move_block_msecs: 2000.0 # 移动挡球的时间，单位：毫秒
       shoot:
         threat_threshold: -2.0 # threat 小于此值时，才使用 kick
@@ -62,13 +62,13 @@ brain_node:
         enable: true # 在直接任意球和门球时，是否使用大力踢
         use_for_kickoff: true # 在正常开球时是否使用大力踢
         # 以下参数围成的矩形为大力踢球的触发区域
-        xmin: 1.1 # 大力开球的 x 轴范围，单位：米
-        xmax: 1.5 # 大力开球的 x 轴范围，单位：米
-        ymin: -0.3 # 大力开球的 y 轴范围，单位：米
-        ymax: 0.3 # 大力开球的 y 轴范围，单位：米
+        xmin: -0.5 # 大力开球的 x 轴范围，单位：米
+        xmax: 6.0 # 大力开球的 x 轴范围，单位：米
+        ymin: -3.0 # 大力开球的 y 轴范围，单位：米
+        ymax: 3.0 # 大力开球的 y 轴范围，单位：米
         enable_auto_visual_kick: true
       auto_visual_kick_enable_dist_min: 0.2 # 视觉射门的距球距离最小值
-      auto_visual_kick_enable_dist_max: 4.0 # 视觉射门的距球距离最大值
+      auto_visual_kick_enable_dist_max: 3.5 # 视觉射门的距球距离最大值
       auto_visual_kick_enable_angle: 0.8 # 机器人面朝方向与球之间允许的最大偏差角度
       enable_auto_visual_defend: true # 守门员是否开启自动视觉
 
