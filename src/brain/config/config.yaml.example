@@ -26,7 +26,7 @@ brain_node:
       vtheta_limit: 1.5 # 步态角速度限制
 
     strategy:
-      ball_confidence_threshold: 30.0 # confidence 低于这个阈值，认为不是球
+      ball_confidence_threshold: 50.0 # confidence 低于这个阈值，认为不是球
       ball_confidence_decay_rate: 3.0 # 看到 confidence 为 100 的球后，多少秒没有再看到，则认为球丢了
       enable_stable_kick: false # 开启后，在 kick 时，如风险较低，则稳定一下再出脚
       ball_memory_timeout: 3.0 # 球记忆失效时间，超过这个时间，认为球丢了
@@ -59,17 +59,18 @@ brain_node:
         ymax: 0.3 # kick 的 y 轴范围，单位：米
 
       power_shoot:
-        enable: false # 在直接任意球和门球时，是否使用大力踢
+        enable: true # 在直接任意球和门球时，是否使用大力踢
         use_for_kickoff: true # 在正常开球时是否使用大力踢
+        # 以下参数围成的矩形为大力踢球的触发区域
         xmin: 1.1 # 大力开球的 x 轴范围，单位：米
         xmax: 1.5 # 大力开球的 x 轴范围，单位：米
         ymin: -0.3 # 大力开球的 y 轴范围，单位：米
         ymax: 0.3 # 大力开球的 y 轴范围，单位：米
         enable_auto_visual_kick: true
-      auto_visual_kick_enable_dist_min: 0.2
-      auto_visual_kick_enable_dist_max: 4.0
-      auto_visual_kick_enable_angle: 0.8
-      enable_auto_visual_defend: false
+      auto_visual_kick_enable_dist_min: 0.2 # 视觉射门的距球距离最小值
+      auto_visual_kick_enable_dist_max: 4.0 # 视觉射门的距球距离最大值
+      auto_visual_kick_enable_angle: 0.8 # 机器人面朝方向与球之间允许的最大偏差角度
+      enable_auto_visual_defend: true # 守门员是否开启自动视觉
 
       cooperation:
         enable_role_switch: true # 开启后，会根据场上裁判机上存活的队友数量，来自动决定自己的角色。
@@ -133,7 +134,7 @@ brain_node:
 
 
     debug:
-      log_ball_pos: true # 是否记录球位置到 ballpos.log 中，用于调试
+      log_ball_pos: false # 是否记录球位置到 ballpos.log 中，用于调试
 
     game_control_ip: "TODO" # 裁判机的 IP 地址
 
