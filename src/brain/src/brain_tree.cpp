@@ -1096,12 +1096,17 @@ NodeStatus StrikerDecide::tick() {
     } else if (
         enableAutoVisualKick &&
         brain->data->tmImLead &&
+        brain->data->tmMyCostRank == 0 &&
         !brain->tree->getEntry<bool>("ball_out") &&
         !brain->data->lose_ball &&
         brain->data->tmMyCost < 7.0 &&
         ballRange < autoVisualKickEnableDistMax &&
         ballRange > autoVisualKickEnableDistMin &&
-        fabs(ballYaw) < autoVisualKickEnableAngle * 1.3
+        fabs(ballYaw) < autoVisualKickEnableAngle * 1.3 &&
+        ball.posToField.x > brain->config->fieldDimensions.length / 2 - 14.3 &&
+        fabs(ball.posToField.y) < 5.0 &&
+        brain->data->robotPoseToField.x > brain->config->fieldDimensions.length / 2 - 14.3 &&
+        fabs(brain->data->robotPoseToField.y) < 5.0
     ) {
         newDecision = "auto_visual_kick";
         brain->data->tmImInVisualKick = true;
@@ -1115,6 +1120,27 @@ NodeStatus StrikerDecide::tick() {
         newDecision = "chase";
         color = 0x0000FFFF;
     } 
+    else if (
+        (
+            (angleGoodForKick && !brain->data->isFreekickKickingOff) 
+            || reachedKickDir
+        )
+        && !avoidKick
+        && brain->data->ballDetected
+        && fabs(brain->data->ball.yawToRobot) < KICK_THETA_RANGE
+        && ball.range < KICK_RANGE
+    )
+    {
+        if (brain->data->kickType == "cross") newDecision = "cross";
+        else { // kickType == kick
+            double threatThreshold;
+            brain->get_parameter("strategy.shoot.threat_threshold", threatThreshold);
+            if (threatLevel < threatThreshold) newDecision = "safe_shoot";
+            else newDecision = "kick";
+        }        
+        color = 0x00FF00FF;
+        brain->data->isFreekickKickingOff = false; // 只要进一次 kick, 就不算是 kickoff 阶段了.
+    }
     else
     {
         newDecision = "adjust";
@@ -3483,7 +3509,7 @@ NodeStatus RoleSwitchIfNeeded::tick()
         brain->speak("Switch to " + newRole);
     }
     // std::cout << "[MSG] " << brain->tree->getEntry<string>("player_role") << std::endl;
-    log(format("RoleSwitchIfNeeded ticked. old role: {}, new role: {}", oldRole, newRole));
+    log(std::format("RoleSwitchIfNeeded ticked. old role: {}, new role: {}", oldRole, newRole));
 
     return NodeStatus::SUCCESS;
 }
