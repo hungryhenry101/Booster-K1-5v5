@@ -3469,37 +3469,52 @@ NodeStatus CheckAndStandUp::tick()
 
 NodeStatus RoleSwitchIfNeeded::tick()
 {
-
     auto log = [=](string msg) {
         brain->log->setTimeNow();
         brain->log->log("debug/RoleSwitchIfNeeded", rerun::TextLog(msg));
     };
 
+    bool switchRole = true;
+    brain->get_parameter("strategy.cooperation.enable_role_switch", switchRole);
+    if (!switchRole) return NodeStatus::SUCCESS;
+
     string oldRole = brain->tree->getEntry<string>("player_role");
     string newRole = oldRole;
 
-    // 找到场上存活的（未被罚下）且 ID 最大的机器人，将其设为守门员
-    int lastAliveId = -1;
-    // 只在 brain->config->numOfPlayers 范围内寻找场上存活（未被罚下）且 ID 最大的机器人
-    for (int i = brain->config->numOfPlayers - 1; i >= 0; i--)
-    {
-        if (brain->data->penalty[i] == PENALTY_NONE)
-        {
-            lastAliveId = i + 1;
-            break;
+    // 检查场上是否已有守门员
+    bool hasGoalie = (oldRole == "goal_keeper"); // init value
+    if (!hasGoalie) {
+        for (int i = 0; i < brain->config->numOfPlayers; i++) {
+            if (i == brain->config->playerId - 1) continue;
+            if (brain->data->tmStatus[i].isAlive && brain->data->tmStatus[i].role == "goal_keeper") {
+                hasGoalie = true;
+                break;
+            }
         }
     }
 
-    if (lastAliveId != -1)
+    // 若没有守门员，则让 ID 最大的存活队员担任守门员
+    // 增加冷却时间判断，避免与 handleCooperation 中的手动角色切换冲突
+    if (!hasGoalie && brain->msecsSince(brain->data->tmLastCmdChangeTime) > 2000)
     {
-        if (brain->config->playerId == lastAliveId){
-            newRole = "goal_keeper";
+        int lastAliveId = -1;
+        for (int i = brain->config->numOfPlayers - 1; i >= 0; i--) {
+            if (brain->data->penalty[i] == PENALTY_NONE) {
+                lastAliveId = i + 1;
+                break;
+            }
         }
-        else{
-            newRole = "striker";
+
+        if (lastAliveId != -1) {
+            if (brain->config->playerId == lastAliveId) {
+                newRole = "goal_keeper";
+            }
+            else {
+                newRole = "striker";
+            }
         }
     }
-     
+
     if (brain->tree->getEntry<string>("gc_game_state") == "INITIAL") {
         newRole = brain->config->playerRole;
     }
@@ -3507,13 +3522,11 @@ NodeStatus RoleSwitchIfNeeded::tick()
     if (newRole != oldRole) {
         brain->tree->setEntry<string>("player_role", newRole);
         brain->speak("Switch to " + newRole);
+        // log(format("RoleSwitchIfNeeded ticked. old role: {}, new role: {}", oldRole, newRole));
     }
-    // std::cout << "[MSG] " << brain->tree->getEntry<string>("player_role") << std::endl;
-    log(std::format("RoleSwitchIfNeeded ticked. old role: {}, new role: {}", oldRole, newRole));
 
     return NodeStatus::SUCCESS;
 }
-
 /* ------------------------------------ 节点实现: 调试用 ------------------------------------*/
 
 double AutoCalibrateVision::_calcResidual() {
