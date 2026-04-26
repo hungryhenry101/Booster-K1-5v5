@@ -507,17 +507,41 @@ void Brain::handleCooperation() {
     bool switchRole;
     get_parameter("strategy.cooperation.enable_role_switch", switchRole);
     if (switchRole) {
-        if (data->penalty[selfIdx] == PENALTY_NONE) { 
-            if (gcAliveCount < numOfPlayers) { 
-                log_("Not full team. I must be Striker");
-                tree->setEntry<string>("player_role", "striker"); 
+        // 查找当前场上是否已有守门员（包括自己和存活的队友）
+        bool hasGoalie = false;
+        if (tree->getEntry<string>("player_role") == "goal_keeper") hasGoalie = true;
+        for (int i = 0; i < config->numOfPlayers; i++) {
+            if (i == selfIdx) continue;
+            if (data->tmStatus[i].isAlive && data->tmStatus[i].role == "goal_keeper") {
+                hasGoalie = true;
+                break;
             }
-        } else { 
-            if (gcAliveCount == numOfPlayers - 1) { 
-                log_("I am only on under penalty, I must be goal keeper");
-                tree->setEntry<string>("player_role", "goal_keeper"); 
+        }
+
+        // 若当前场上没有守门员，且不在手动切换角色的冷却期，则让 ID 最大的队员担任守门员
+        if (!hasGoalie && msecsSince(data->tmLastCmdChangeTime) > CMD_COOLDOWN) {
+            int lastAliveId = -1;
+            for (int i = config->numOfPlayers - 1; i >= 0; i--) {
+                if (data->penalty[i] == PENALTY_NONE) {
+                    lastAliveId = i + 1;
+                    break;
+                }
             }
-    
+            if (lastAliveId != -1) {
+                if (config->playerId == lastAliveId) {
+                    if (tree->getEntry<string>("player_role") != "goal_keeper") {
+                        tree->setEntry<string>("player_role", "goal_keeper");
+                        log_("No goalie on field, I'm max ID, becoming goalie");
+                        speak("i become goalie", true);
+                    }
+                } else if (data->penalty[selfIdx] == PENALTY_NONE) {
+                    // 如果我不是最大 ID，且我也没被罚下，则确保我是前锋
+                    if (tree->getEntry<string>("player_role") != "striker") {
+                        tree->setEntry<string>("player_role", "striker");
+                        log_("No goalie on field, I'm not max ID, becoming striker");
+                    }
+                }
+            }
         }
     }
 
