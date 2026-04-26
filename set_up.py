@@ -19,7 +19,7 @@ CONFIG_FILE_EXAMPLE = os.path.join(script_dir, "src", "brain", "config", "config
 GAME_CONTROL_LAUNCH_PY = os.path.join(script_dir, "src", "game_controller", "launch", "launch.py")
 
 # 有效选项
-VALID_PLAYER_IDS = [1, 2, 3, 4, 5]
+VALID_PLAYER_IDS = [1, 2, 3, 4, 5, 6]
 VALID_ROLES = ["striker", "goal_keeper"]
 
 def gen_quickstart_sh():

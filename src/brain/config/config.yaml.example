@@ -2,7 +2,7 @@ brain_node:
   ros__parameters:
     game:
       team_id: 0 # 与 GameControl 的 team_id 保持一致 (有效值：1-255)
-      player_id: 0 # 1 | 2 | 3 | 4 | 5
+      player_id: 0 # 1 | 2 | 3 | 4 | 5 | 6
       field_type: "adult_size" # adult_size | kid_size | robo_league
       player_role: "TODO" # striker | goal_keeper
       player_start_pos: "right" # right | left
