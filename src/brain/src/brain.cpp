@@ -338,9 +338,9 @@ void Brain::pubKickMsg() {
     double power = 0.0;
 
     if (dist > 6.0) {
-        power = 2.0;
+        power = 10.0;
     } else {
-        power = 6.0;
+        power = 8.0;
     }
     kickMsg.power = power;
 
