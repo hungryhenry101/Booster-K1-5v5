@@ -9,7 +9,7 @@ brain_node:
       treat_person_as_robot: false # 是否将人类视为机器人，用于调试。!!!! 正式比赛时，必须设置为 false !!!!
       number_of_players: 5
 
-    ball_predictor:
+    ball_predictor: # ----UNUSED----
       step_interval: 100. # 球预测的时间间隔，单位：毫秒
       step_cnt: 50 # 球预测的步数
       linear_steps: 5 # 利用前几帧的数据进行线性预测，数据越大越稳定但越慢.
@@ -20,7 +20,7 @@ brain_node:
       robot_height: 0.90 # 用于大概估算检测到的物体相对于机器人头的 pitch 角
       odom_factor: 1.2 # 大约估算 odom 中给出的距离与实际行走的距离的比例
       vx_factor: 0.90 # 修正步态 x 与 y 的差异
-      yaw_offset: 0.0 # 修正步态的前进角度
+      yaw_offset: 0.0 # 修正步态的前进角度 (0时偏左，把power设高点会好些)
       vx_limit: 1.5 # 步态 x 速度限制
       vy_limit: 1.5 # 步态 y 速度限制
       vtheta_limit: 1.5 # 步态角速度限制
@@ -44,9 +44,9 @@ brain_node:
       limit_speed_near_border: false # 是否限制在 chase 时靠近场地边界时的速度
       near_border_speed_limit: 0.5 # 靠近场地边界时的速度限制
       near_border_dist_threshold: -1.0 # 靠近场地边界时的范围，在这个范围内，限制速度。注意，这里负值代表在场内.
-      enable_bypass: false # 是否开启传球策略   ---NO FUNCTION----
-      enable_shoot: false # 是否使用 shoot    ---NO FUNCTION----
-      enable_directional_kick: false # 为 true 时，在方向合适时会通过斜向踢球来将球往对方球门踢   ---NO FUNCTION----
+      enable_bypass: false # 是否开启传球策略   ---UNUSED----
+      enable_shoot: false # 是否使用 shoot    ---UNUSED----
+      enable_directional_kick: false # 为 true 时，在方向合适时会通过斜向踢球来将球往对方球门踢   ---UNUSED----
       use_squat_block: true # 是否使用蹲下挡球策略，如果为 true, 则守门员会蹲下挡球，否则只会站立挡球
       squat_block_msecs: 2000.0 # 蹲下挡球的时间，单位：毫秒
       use_move_block: true # 是否使用移动挡球策略，如果为 true, 则守门员依据对球路的预测，提前向挡球位置移动，如 false, 则只会向球的当前位置移动.  !!!TODO: WORTH TESTING
@@ -58,18 +58,19 @@ brain_node:
         ymin: -0.3 # kick 的 y 轴范围，单位：米
         ymax: 0.3 # kick 的 y 轴范围，单位：米
 
-      power_shoot:
-        enable: true # 在直接任意球和门球时，是否使用大力踢
+      power_shoot: #------UNUSED--------
+        enable: true # 在直接任意球和门球时，是否使用大力踢 
         use_for_kickoff: true # 在正常开球时是否使用大力踢
         # 以下参数围成的矩形为大力踢球的触发区域
-        xmin: -0.5 # 大力开球的 x 轴范围，单位：米
-        xmax: 6.0 # 大力开球的 x 轴范围，单位：米
+        xmin: -7.0 # 大力开球的 x 轴范围，单位：米
+        xmax: 1.5 # 大力开球的 x 轴范围，单位：米
         ymin: -3.0 # 大力开球的 y 轴范围，单位：米
         ymax: 3.0 # 大力开球的 y 轴范围，单位：米
-        enable_auto_visual_kick: true
+
+      enable_auto_visual_kick: true
       auto_visual_kick_enable_dist_min: 0.2 # 视觉射门的距球距离最小值
       auto_visual_kick_enable_dist_max: 3.5 # 视觉射门的距球距离最大值
-      auto_visual_kick_enable_angle: 0.8 # 机器人面朝方向与球之间允许的最大偏差角度
+      auto_visual_kick_enable_angle: 0.5 # 机器人面朝方向与球之间允许的最大偏差角度
       enable_auto_visual_defend: true # 守门员是否开启自动视觉
 
       cooperation:
@@ -102,8 +103,8 @@ brain_node:
       always_turn_left: false # 在 gotoreadyposition 时，如果有障碍，永远向左转
 
     locator:
-      min_marker_count: 3 # 最少看到多少到 marker, 才可以进行粒子滤波定位
-      max_residual: 0.3 # 粒子滤波定位时，最终每个粒子的加权偏差大于此值时，认为定位不成功
+      min_marker_count: 4 # 最少看到多少到 marker, 才可以进行粒子滤波定位
+      max_residual: 0.35 # 粒子滤波定位时，最终每个粒子的加权偏差大于此值时，认为定位不成功
 
     enable_com: true  # 是否开启队友间通信，默认开启
 

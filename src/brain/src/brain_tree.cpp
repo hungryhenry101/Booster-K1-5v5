@@ -1103,7 +1103,7 @@ NodeStatus StrikerDecide::tick() {
         ballRange < autoVisualKickEnableDistMax &&
         ballRange > autoVisualKickEnableDistMin &&
         fabs(ballYaw) < autoVisualKickEnableAngle * 1.3 &&
-        ball.posToField.x > brain->config->fieldDimensions.length / 2 - 14.3 &&
+        ball.posToField.x > brain->config->fieldDimensions.length / 2 - 14.3 && //viewwwww condition here
         fabs(ball.posToField.y) < 5.0 &&
         brain->data->robotPoseToField.x > brain->config->fieldDimensions.length / 2 - 14.3 &&
         fabs(brain->data->robotPoseToField.y) < 5.0
