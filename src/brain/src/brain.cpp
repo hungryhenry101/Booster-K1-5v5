@@ -337,10 +337,12 @@ void Brain::pubKickMsg() {
     dist = std::abs(dist);
     double power = 0.0;
 
-    if (dist > 6.0) {
-        power = 10.0;
-    } else {
-        power = 8.0;
+    if (dist > 10.0) {
+        power = 9.0;
+    } else if (dist > 6.0){
+        power = 7.0;
+    } else{
+        power = 4.0;
     }
     kickMsg.power = power;
 

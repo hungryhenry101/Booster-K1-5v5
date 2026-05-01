@@ -515,7 +515,7 @@ NodeStatus GoToFreekickPosition::onRunning() {
     const double oppGoalX = fd.length / 2.0;
 
     const double kickDir = brain->data->kickDir;
-    const double defenseDir = atan2(ballPos.y, ballPos.x + fd.length / 2.0);
+    const double defenseDir = atan2(ballPos.y, ballPos.x + fd.length / 2.0); // 防守方向：从球指向己方球门的单位向量角度
     // 和 assist 对齐：freekick 按 tmMyCostRank 分工，不再按前锋序号。
     const int rank = brain->data->tmMyCostRank;
     if (side == "attack") {
@@ -523,34 +523,42 @@ NodeStatus GoToFreekickPosition::onRunning() {
         getInput("attack_dist", attackDist);
 
         if (rank == 0) {
+            // 主罚队员：站在球后方 attackDist 米处，面朝 kickDir 方向，便于直接射门或传球
             targetPose.x = ballPos.x - attackDist * cos(kickDir);
             targetPose.y = ballPos.y - attackDist * sin(kickDir);
             targetPose.theta = kickDir;
         } else if (rank == 1) {
+            // 辅助队员：站在球后方 2 米处，方向指向己方球门（defenseDir）
             targetPose.x = ballPos.x - 2.0 * cos(defenseDir);
             targetPose.y = ballPos.y - 2.0 * sin(defenseDir);
             targetPose.theta = defenseDir;
         } else if (rank == 2) {
+            // 后场右侧
             targetPose.x = - fd.length / 2.0 + fd.penaltyDist;
             targetPose.y = fd.goalAreaWidth / 2.0;
         } else { // rank >= 3
+            // 后场左侧
             targetPose.x = - fd.length / 2.0 + fd.penaltyDist;
             targetPose.y = - fd.goalAreaWidth / 2.0;
             log(format("freekick attack fallback, rank=%d", rank));
         }
     } else if (side == "defense") {
         if (rank == 0) {
+            // 位于球后方 3 米横向 2.5 米处
             targetPose.x = ballPos.x - 3.0 * cos(defenseDir);
             targetPose.y = ballPos.y - 2.5 * sin(defenseDir);
             targetPose.theta = defenseDir;
            } else if (rank == 1) {
-            targetPose.x = ballPos.x - 3.5 * cos(defenseDir);
-            targetPose.y = ballPos.y - 4.0 * sin(defenseDir);
-            targetPose.theta = defenseDir;
+               // 位于球后方 3.5 米横向 4 米处
+               targetPose.x = ballPos.x - 3.5 * cos(defenseDir);
+               targetPose.y = ballPos.y - 4.0 * sin(defenseDir);
+               targetPose.theta = defenseDir;
             } else if (rank == 2) {
+                // 后场右侧
                 targetPose.x = - fd.length / 2.0 + fd.penaltyDist;
                 targetPose.y = fd.goalAreaWidth / 2.0;
             } else { // rank >= 3
+                // 后场左侧
                 targetPose.x = - fd.length / 2.0 + fd.penaltyDist;
                 targetPose.y = - fd.goalAreaWidth / 2.0;
                 log(format("freekick defense fallback, rank=%d", rank));
@@ -568,10 +576,9 @@ NodeStatus GoToFreekickPosition::onRunning() {
     const double dist = norm(targetPose.x - robotPose.x, targetPose.y - robotPose.y);
     const double deltaDir = toPInPI(targetPose.theta - robotPose.theta);
 
-    if ( // 认为到达了目标位置
-        dist < 0.3
-        && fabs(deltaDir) < 0.15
-    ) {
+    if ( // 认为到达了目标位置：距离 < 0.3 米且角度误差 < 0.15 弧度
+        dist < 0.3 && fabs(deltaDir) < 0.15)
+    {
         brain->client->setVelocity(0, 0, 0);
         return NodeStatus::SUCCESS;
     }
