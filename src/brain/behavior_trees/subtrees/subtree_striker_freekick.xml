@@ -7,14 +7,14 @@
          <ReactiveSequence _while="gc_is_sub_state_kickoff_side" name="移动到开点球位置">
             <CamTrackBall _while="ball_location_known" />
             <CalcKickDir />
-            <ObserveFreekickPositions msecs_per_pos="1500" />
+            <!-- <ObserveFreekickPositions msecs_per_pos="1500" /> -->
             <SubTree ID="FindBall" _while="!(ball_location_known || tm_ball_pos_reliable)" _autoremap="true" />
             <GoToFreekickPosition _while="ball_location_known || tm_ball_pos_reliable" side="attack" vx_limit="0.7" vy_limit="0.4" />
          </ReactiveSequence>
          <ReactiveSequence _while="!gc_is_sub_state_kickoff_side" name="移动到防守点球位置">
             <CamTrackBall _while="ball_location_known" />
             <CalcKickDir />
-            <ObserveFreekickPositions msecs_per_pos="1500" />
+            <!-- <ObserveFreekickPositions msecs_per_pos="1500" /> -->
             <SubTree ID="FindBall" _while="!(ball_location_known || tm_ball_pos_reliable)" _autoremap="true" />
             <GoToFreekickPosition _while="ball_location_known || tm_ball_pos_reliable" side="defense" />
          </ReactiveSequence>
