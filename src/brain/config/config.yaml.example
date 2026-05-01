@@ -26,7 +26,7 @@ brain_node:
       vtheta_limit: 1.5 # 步态角速度限制
 
     strategy:
-      ball_confidence_threshold: 50.0 # confidence 低于这个阈值，认为不是球
+      ball_confidence_threshold: 40.0 # confidence 低于这个阈值，认为不是球
       ball_confidence_decay_rate: 3.0 # 看到 confidence 为 100 的球后，多少秒没有再看到，则认为球丢了
       enable_stable_kick: false # 开启后，在 kick 时，如风险较低，则稳定一下再出脚 !!--> unused in yaml, can edit by searching `enableStableKick`
       ball_memory_timeout: 3.0 # 球记忆失效时间，超过这个时间，认为球丢了
@@ -34,8 +34,8 @@ brain_node:
       limit_near_ball_speed: false # 是否限制在 chase 时靠近球时的速度
       near_ball_speed_limit: 0.6 # 靠近球时的速度限制
       near_ball_range: 2.0 # 靠近球时的范围，在这个范围内，限制速度
-      soft_kickoff: false # 开球时用小力度，以防止直接开进门，使进球无效
-      soft_kickoff_speed: 0.3 # 开球时的力度 (速度)
+      soft_kickoff: true # 开球时用小力度，以防止直接开进门，使进球无效
+      soft_kickoff_speed: 0.2 # 开球时的力度 (速度)
       kick_range: 1.0 # 仅在这个 range 之内才会执行 kick 或 disrupt
       kick_theta_range: 0.2 # ball yaw 只有在这个角度之内，才会踢。否则就继续调整
       abort_kick_when_ball_moved: true # kick 过程中，如果能明确感知到球已经不在 kick 路线上或已经踢中了，则直接退出 kick
@@ -103,8 +103,8 @@ brain_node:
       always_turn_left: false # 在 gotoreadyposition 时，如果有障碍，永远向左转
 
     locator:
-      min_marker_count: 4 # 最少看到多少到 marker, 才可以进行粒子滤波定位
-      max_residual: 0.35 # 粒子滤波定位时，最终每个粒子的加权偏差大于此值时，认为定位不成功
+      min_marker_count: 5 # 最少看到多少到 marker, 才可以进行粒子滤波定位
+      max_residual: 0.4 # 粒子滤波定位时，最终每个粒子的加权偏差大于此值时，认为定位不成功
 
     enable_com: true  # 是否开启队友间通信，默认开启
 
@@ -113,8 +113,8 @@ brain_node:
       server_ip: "192.168.10.110:9876" # 开启了 rerun Viewer 的机器地址
       enable_file: true # 是否将 log 写入本地
       log_dir: "/home/booster/Workspace/rrlog" # 本地 log 存储路径，会在此路径下生成以时间为开头的文件
-      max_log_file_mins: 5.0 # 本地 log 最长多少分钟就分片存储。太大的文件会导致读的时候死机.
-      img_interval: 3 # 每多少帧图像 log 一次，如果希望更好的实时性或减少日志大小，可以调高这个值。但会造成 log 的时间精度降低.
+      max_log_file_mins: 3.0 # 本地 log 最长多少分钟就分片存储。太大的文件会导致读的时候死机.
+      img_interval: 2 # 每多少帧图像 log 一次，如果希望更好的实时性或减少日志大小，可以调高这个值。但会造成 log 的时间精度降低.
 
     recovery:
       retry_max_count: 3 # 尝试起身的最大次数，超过这个次数后，认为起身失败，进入 recovery 模式，需要人工干预
