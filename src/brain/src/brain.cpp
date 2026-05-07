@@ -338,11 +338,9 @@ void Brain::pubKickMsg() {
     double power = 0.0;
 
     if (dist > 10.0) {
-        power = 9.0;
-    } else if (dist > 6.0){
-        power = 7.0;
+        power = 10.0;
     } else{
-        power = 4.0;
+        power = 10.0;
     }
     kickMsg.power = power;
 
@@ -1352,8 +1350,12 @@ void Brain::gameControlCallback(const game_controller_interface::msg::GameContro
             gameSubStateType = "FREE_KICK";
             break;
     }
-    vector<string> gameSubStateMap = {"STOP", "GET_READY", "SET"};                               // STOP: 停下来; -> GET_READY: 移动到进攻或防守位置; -> SET: 站住不动
-    string gameSubState = gameSubStateMap[static_cast<int>(msg.secondary_state_info[1])];
+    vector<string> gameSubStateMap = {"READY", "SET", "PLAYING"};                               // READY: 移动到进攻或防守位置; -> SET: 站住不动; -> PLAYING: 对方可以开球
+    string gameSubState = "UNKNOWN";
+    int subStateIdx = static_cast<int>(msg.secondary_state_info[1]);
+    if (subStateIdx >= 0 && subStateIdx < gameSubStateMap.size()) {
+        gameSubState = gameSubStateMap[subStateIdx];
+    }
     tree->setEntry<string>("gc_game_sub_state_type", gameSubStateType);
     tree->setEntry<string>("gc_game_sub_state", gameSubState);
     bool isSubStateKickOffSide = (static_cast<int>(msg.secondary_state_info[0]) == config->teamId); // 在二级状态下, 我方是否是开球方. 例如, 当前二级状态为任意球, 我方是否是开任意球的一方
