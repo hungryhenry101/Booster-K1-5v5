@@ -1437,7 +1437,7 @@ NodeStatus RLVisionKick::onStart()
     _visionKickStarted = false;
     _pendingRobocupWalk = false;
 
-    startDecelerate(1000.0);
+    startDecelerate(600.0); // 1000 by original
     stepDecelerate();
 
     return NodeStatus::RUNNING;

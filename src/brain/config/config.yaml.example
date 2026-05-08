@@ -47,7 +47,7 @@ brain_node:
       enable_bypass: false # 是否开启传球策略   ---UNUSED----
       enable_shoot: false # 是否使用 shoot    ---UNUSED----
       enable_directional_kick: false # 为 true 时，在方向合适时会通过斜向踢球来将球往对方球门踢   ---UNUSED----
-      use_squat_block: true # 是否使用蹲下挡球策略，如果为 true, 则守门员会蹲下挡球，否则只会站立挡球
+      use_squat_block: false # 是否使用蹲下挡球策略，如果为 true, 则守门员会蹲下挡球，否则只会站立挡球   ----Negative impact by true-------
       squat_block_msecs: 2000.0 # 蹲下挡球的时间，单位：毫秒
       use_move_block: true # 是否使用移动挡球策略，如果为 true, 则守门员依据对球路的预测，提前向挡球位置移动，如 false, 则只会向球的当前位置移动.  !!!TODO: WORTH TESTING
       move_block_msecs: 2000.0 # 移动挡球的时间，单位：毫秒

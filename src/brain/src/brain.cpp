@@ -755,8 +755,8 @@ void Brain::updateRobotMemory() {
 void Brain::updateKickoffMemory() {
     
     static Point ballPos;
-    const double BALL_MOVE_THRESHOLD_FACTOR = 0.15; 
-    const double BALL_MOVE_THRESHOLD_MIN = 0.3; 
+    const double BALL_MOVE_THRESHOLD_FACTOR = 0.10; 
+    const double BALL_MOVE_THRESHOLD_MIN = 0.15; 
     auto ballMoved = [=]() {
         if (!data->ballDetected) return false; 
         double range = data->ball.range;
