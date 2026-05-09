@@ -106,6 +106,7 @@ public:
             InputPort<double>("chase_threshold", 1.0, ""),
             InputPort<double>("adjust_angle_tolerance", 0.1, ""),
             InputPort<double>("adjust_y_tolerance", 0.1, ""), 
+            InputPort<double>("save_range", 1.5, "有效扑救范围"),
             InputPort<string>("decision_in", "", ""),
             OutputPort<string>("decision_out"),
         };
@@ -399,6 +400,25 @@ private:
 // 守门员动作
 class GoalieSquat : public SyncActionNode { public: GoalieSquat(const string &n, const NodeConfig &c, Brain *b) : SyncActionNode(n,c), brain(b) {} NodeStatus tick() override { return NodeStatus::SUCCESS; } static PortsList providedPorts() { return {}; } private: Brain *brain; };
 class GoalieStandUp : public SyncActionNode { public: GoalieStandUp(const string &n, const NodeConfig &c, Brain *b) : SyncActionNode(n,c), brain(b) {} NodeStatus tick() override { return NodeStatus::SUCCESS; } static PortsList providedPorts() { return {}; } private: Brain *brain; };
+
+class GoalieSave : public StatefulActionNode
+{
+public:
+    GoalieSave(const string &name, const NodeConfig &config, Brain *_brain) : StatefulActionNode(name, config), brain(_brain) {}
+    static PortsList providedPorts() {
+        return {
+            InputPort<double>("save_msecs", 2000, "倒地时间"),
+        };
+    }
+    NodeStatus onStart() override;
+    NodeStatus onRunning() override;
+    void onHalted() override;
+private:
+    Brain *brain;
+    rclcpp::Time _startTime;
+    bool _isDamping;
+};
+
 
 class SelfLocate : public SyncActionNode
 {

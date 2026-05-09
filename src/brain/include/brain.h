@@ -39,6 +39,7 @@
 #include "brain_communication.h"
 #include "locator.h"
 #include "robot_client.h"
+#include "posProjector.h"
 
 
 using namespace std;
@@ -66,6 +67,7 @@ public:
     // locator 对象
     std::shared_ptr<Locator> locator;
     // posProjector 对象，用于预测球的位置
+    std::shared_ptr<PosPredictor> posPredictor;
 
     // BrainTree 对象，里面包含 BehaviorTree 相关的操作
     std::shared_ptr<BrainTree> tree;

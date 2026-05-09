@@ -169,7 +169,20 @@ public:
         vector<double> y(_y.end() - trainDataLen, _y.end());
         vector<rclcpp::Time> t(_t.end() - trainDataLen, _t.end());
         
-        auto [a, b, rSquare, errMsg] = linear_fit(x, y);
+        double x_min = *min_element(x.begin(), x.end());
+        double x_max = *max_element(x.begin(), x.end());
+        double y_min = *min_element(y.begin(), y.end());
+        double y_max = *max_element(y.begin(), y.end());
+        
+        double rSquare = 0.0;
+        if (abs(x_max - x_min) >= abs(y_max - y_min)) {
+            auto [a, b, r2, errMsg] = linear_fit(x, y);
+            rSquare = r2;
+        } else {
+            auto [a, b, r2, errMsg] = linear_fit(y, x);
+            rSquare = r2;
+        }
+
         if (rSquare < rSquareValve) {
             return make_tuple(vector<array<double, 2>>(), false, format("rsquare too small: r^2 = %.2f, need: %.2f", rSquare, rSquareValve));
         }
@@ -303,7 +316,7 @@ public:
     }
 
     // 判断每个 step 的 x,y 移动方向的一致性
-    bool isSameDir(const vector<double>& x, vector<double>& y, double threshold = M_PI) {
+    bool isSameDir(const vector<double>& x, const vector<double>& y, double threshold = M_PI) {
         int n = x.size();
         if (y.size() != n) return false;
         if (n < 3) return false;

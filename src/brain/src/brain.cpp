@@ -146,6 +146,7 @@ void Brain::init()
     tree = std::make_shared<BrainTree>(this);
     client = std::make_shared<RobotClient>(this);
     communication = std::make_shared<BrainCommunication>(this);
+    posPredictor = std::make_shared<PosPredictor>(get_clock());
 
     
     locator->init(config->fieldDimensions, config->pfMinMarkerCnt, config->pfMaxResidual);
@@ -2168,6 +2169,7 @@ void Brain::detectProcessBalls(const vector<GameObject> &ballObjs)
 
         tree->setEntry<bool>("ball_location_known", true);
         updateBallOut();
+        posPredictor->add(now, data->ball.posToField.x, data->ball.posToField.y, data->ball.range);
 
         lastSeenRealBallTime = now;
         data->lose_ball = false;        

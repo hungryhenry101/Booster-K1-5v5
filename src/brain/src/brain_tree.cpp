@@ -68,6 +68,7 @@ void BrainTree::init()
     REGISTER_BUILDER(MoveToPoseOnField)
     REGISTER_BUILDER(GoBackInField)
     REGISTER_BUILDER(GoalieDecide)
+    REGISTER_BUILDER(GoalieSave)
     REGISTER_BUILDER(DecideCheckBehind)
     REGISTER_BUILDER(WaveHand)
     REGISTER_BUILDER(MoveHead)
@@ -271,6 +272,44 @@ NodeStatus CamTrackBall::tick()
     // }
      
     return NodeStatus::SUCCESS;
+}
+
+NodeStatus GoalieSave::onStart()
+{
+    _startTime = brain->get_clock()->now();
+    _isDamping = false;
+    double saveSpeedX = brain->tree->getEntry<double>("goalie_save_speed_x");
+    double saveSpeedY = brain->tree->getEntry<double>("goalie_save_speed_y");
+    
+    // Give initial velocity
+    brain->client->setVelocity(saveSpeedX, saveSpeedY, 0);
+    
+    return NodeStatus::RUNNING;
+}
+
+NodeStatus GoalieSave::onRunning()
+{
+    double saveMsecs = getInput<double>("save_msecs").value();
+    auto now = brain->get_clock()->now();
+    
+    // enter damping after a short delay (e.g., 200ms) to allow velocity to apply
+    if (!_isDamping && brain->msecsSince(_startTime) > 200) {
+        brain->client->enterDamping();
+        _isDamping = true;
+    }
+
+    if (brain->msecsSince(_startTime) > saveMsecs) {
+        // Recovery mechanism will automatically trigger if robot is fallen, 
+        // but we return SUCCESS so the BT continues.
+        return NodeStatus::SUCCESS;
+    }
+
+    return NodeStatus::RUNNING;
+}
+
+void GoalieSave::onHalted()
+{
+    // Do nothing special, robot recovery will handle stand up
 }
 
 CamFindBall::CamFindBall(const string &name, const NodeConfig &config, Brain *_brain) : SyncActionNode(name, config), brain(_brain)
@@ -1216,6 +1255,72 @@ NodeStatus GoalieDecide::tick()
     {
         newDecision = "retreat";
         color = 0xFF00FFFF;
+    }
+    
+    // Check if we need to save the ball
+    bool shouldSave = false;
+    double saveSpeedX = 0.0;
+    double saveSpeedY = 0.0;
+    double saveRange = 1.0;
+    if (auto port = getInput<double>("save_range")) saveRange = port.value();
+
+    auto [predictions, success, msg_str] = brain->posPredictor->predict_linear(50.0, 40);
+    if (success && predictions.size() > 1) {
+        double x_first = predictions.front()[0];
+        double y_first = predictions.front()[1];
+        double x_last = predictions.back()[0];
+        double y_last = predictions.back()[1];
+        
+        // Check if ball is moving towards own goal (x decreasing)
+        if (x_last < x_first) {
+            double goalX = -brain->config->fieldDimensions.length / 2.0;
+            double ratio = (goalX - x_first) / (x_last - x_first - 1e-6);
+            double y_at_goal = y_first + ratio * (y_last - y_first);
+            
+            double goalWidth = brain->config->fieldDimensions.goalWidth;
+            // if extrapolated trajectory points towards the goal (with 0.5m margin)
+            if (fabs(y_at_goal) < goalWidth / 2.0 + 0.5) {
+                // It's a goal threat. Check when it crosses the robot's X line (parallel to goal line).
+                double myX = brain->data->robotPoseToField.x;
+                
+                // Ball must be in front of us initially
+                if (x_first > myX) {
+                    for (size_t i = 0; i < predictions.size() - 1; i++) {
+                        double p1_x = predictions[i][0];
+                        double p1_y = predictions[i][1];
+                        double p2_x = predictions[i+1][0];
+                        double p2_y = predictions[i+1][1];
+                        
+                        // If it crosses myX in field frame (comes from front to back)
+                        if (p1_x >= myX && p2_x <= myX) {
+                            double r = (p1_x - myX) / (p1_x - p2_x + 1e-6);
+                            double y_intercept_f = p1_y + r * (p2_y - p1_y);
+                            double dy_f = y_intercept_f - brain->data->robotPoseToField.y;
+                            
+                            // Check if within save reach parallel to the goal line
+                            if (fabs(dy_f) < saveRange) { 
+                                shouldSave = true;
+                                double saveSpeed_field_y = dy_f > 0 ? 1.0 : -1.0;
+                                
+                                // Convert field Y velocity to robot local velocity
+                                double theta = brain->data->robotPoseToField.theta;
+                                saveSpeedX = saveSpeed_field_y * sin(theta);
+                                saveSpeedY = saveSpeed_field_y * cos(theta);
+                                
+                                brain->tree->setEntry<double>("goalie_save_speed_x", saveSpeedX);
+                                brain->tree->setEntry<double>("goalie_save_speed_y", saveSpeedY);
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (shouldSave) {
+        newDecision = "save";
+        color = 0xFF0000FF;
     }
     else if (
                 enableAutoVisualKick &&
