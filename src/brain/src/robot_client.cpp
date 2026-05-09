@@ -190,7 +190,7 @@ int RobotClient::setVelocity(double x, double y, double theta, bool applyMinX, b
     //                     .with_draw_order(1.0));
 
     // 速度指令太小时, 给一个最小速度, 以防止不响应 TODO 转为参数化
-    double minx = 0.3, miny = 0.3, mintheta = 0.3;
+    double minx = 0.5, miny = 0.5, mintheta = 0.3;
     if (applyMinX && fabs(x) < minx && fabs(x) > 1e-5)
         x = x > 0 ? minx : -minx;
     if (applyMinY && fabs(y) < miny && fabs(y) > 1e-5)
