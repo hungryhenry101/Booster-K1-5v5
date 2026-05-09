@@ -1224,7 +1224,7 @@ NodeStatus GoalieDecide::tick()
                 fabs(brain->data->ball.yawToRobot) < autoVisualKickEnableAngle / 2 &&
                 brain->isFrontRangeClear(-autoVisualKickObstacleAngleThreshold / 2, autoVisualKickObstacleAngleThreshold / 2, autoVisualKickObstacleDistThreshold, 0.035)
             ) {
-    // 自动视觉踢球分支已删除
+        newDecision = "auto_visual_kick";
         color = 0xFF00FFFF;
     }
     else if (ballRange > chaseRangeThreshold * (lastDecision == "chase" ? 0.9 : 1.0))

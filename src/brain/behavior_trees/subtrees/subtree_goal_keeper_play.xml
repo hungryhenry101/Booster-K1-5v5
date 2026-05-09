@@ -44,7 +44,7 @@
                         <Sleep msec="1000" /> -->
                         <Kick speed_limit="1.2" min_msec_kick="600"/>
                      </Sequence>
-                     <!-- RLVisionKick node removed in open-source version -->
+                     <RLVisionKick _while="decision == 'auto_visual_kick'" min_msec_kick="1500" max_msec_kick="7000" range="6.0"/>
                   </Sequence>
                   <ReactiveSequence _while="goalie_mode == 'guard'">
                      <SubTree ID="CamFindAndTrackBall" _autoremap="true" />
