@@ -1,6 +1,6 @@
 #include <cmath>
 #include <cstdlib>
-#include <memory> 
+#include <memory>
 #include "brain_tree.h"
 #include "brain.h"
 #include "utils/math.h"

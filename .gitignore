@@ -1,6 +1,7 @@
 .vscode
 .DS_Store
 .cache
+.clangd
 
 *.log
 build
