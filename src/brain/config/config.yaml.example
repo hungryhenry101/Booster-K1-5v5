@@ -71,7 +71,7 @@ brain_node:
       auto_visual_kick_enable_dist_min: 0.2 # 视觉射门的距球距离最小值
       auto_visual_kick_enable_dist_max: 3.5 # 视觉射门的距球距离最大值
       auto_visual_kick_enable_angle: 0.5 # 机器人面朝方向与球之间允许的最大偏差角度
-      enable_auto_visual_defend: false # 守门员是否开启自动视觉 ----UNUSED----
+      enable_auto_visual_defend: true # 守门员是否开启自动视觉
 
       cooperation:
         enable_role_switch: true # 开启后，会根据场上裁判机上存活的队友数量，来自动决定自己的角色。
