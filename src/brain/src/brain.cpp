@@ -583,10 +583,14 @@ void Brain::handleCooperation() {
     log_(format("tmMinCost: %.1f, myCost: %.1f, myCostRank: %d, myStrikerIDRank: %d", tmMinCost, data->tmMyCost, myCostRank, myStrikerIDRank));
 
 
+    bool isFallen = (data->recoveryState == RobotRecoveryState::IS_FALLING ||
+                     data->recoveryState == RobotRecoveryState::HAS_FALLEN ||
+                     data->recoveryState == RobotRecoveryState::IS_GETTING_UP);
+
     if (
         data->tmImAlive 
         && tree->getEntry<string>("player_role") == "goal_keeper"
-        && data->tmImLead 
+        && (data->tmImLead || isFallen)
         && msecsSince(data->tmLastCmdChangeTime) > CMD_COOLDOWN 
     ) {
         auto distToGoal = [=](Pose2D pose) {
@@ -594,7 +598,7 @@ void Brain::handleCooperation() {
         };
         double maxDist = 0.0;
         double minDist = 1e6;
-        int minIndex = -1; 
+        int closestTmIdx = -1; 
         double myDist = distToGoal(data->robotPoseToField);
         for (int i = 0; i < aliveTmIdxs.size(); i++) {
             int tmIdx = aliveTmIdxs[i];
@@ -602,19 +606,23 @@ void Brain::handleCooperation() {
             double dist = distToGoal(tmPose);
             if (dist > maxDist) maxDist = dist;
             if (dist < minDist) {
-                minIndex = tmIdx;
+                closestTmIdx = tmIdx;
                 minDist = dist;
             }
         }
         string decision = tree->getEntry<string>("decision");
         bool goalieWantsToAttack = (decision == "chase" || decision == "kick");
-        if (minIndex >= 0 && (myDist > maxDist || goalieWantsToAttack)) {
+        if (closestTmIdx >= 0 && (myDist > maxDist || goalieWantsToAttack || isFallen)) {
             data->tmLastCmdChangeTime = get_clock()->now();
-            data->tmMyCmd = 10 + minIndex + 1; 
+            data->tmMyCmd = 10 + closestTmIdx + 1; 
             data->tmCmdId += 1;
             data->tmMyCmdId = data->tmCmdId;
             tree->setEntry<string>("player_role", "striker");
-            log_(format("goalie: i am attacking (decision: %s), i ask player %d to defend", decision.c_str(), minIndex + 1));
+            if (isFallen) {
+                log_(format("goalie: i have fallen, i ask player %d to defend", closestTmIdx + 1));
+            } else {
+                log_(format("goalie: i am attacking (decision: %s), i ask player %d to defend", decision.c_str(), closestTmIdx + 1));
+            }
         } else {
             log_(format("goalie: no need to attack yet, my dist: %.2f, decision: %s", myDist, decision.c_str()));
         }
