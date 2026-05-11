@@ -327,6 +327,12 @@ void Brain::pubKickMsg() {
 
     double goal_x = config->fieldDimensions.length / 2;
     double goal_y = 0.0;
+
+    if (data->useFakeGoal) { // [#15] 假球门
+        goal_x = data->fakeGoalPos.x;
+        goal_y = data->fakeGoalPos.y;
+    }
+
     Pose2D goalPose;
     goalPose.x = goal_x;
     goalPose.y = goal_y;
@@ -336,7 +342,9 @@ void Brain::pubKickMsg() {
     dist = std::abs(dist);
     double power = 0.0;
 
-    if (dist > 10.0) {
+    if (data->useFakeGoal) { // [#15] 假球门使用低功率
+        power = 5.0;
+    } else if (dist > 10.0) {
         power = 10.0;
     } else{
         power = 10.0;
@@ -375,6 +383,7 @@ void Brain::handleSpecialStates() {
     } else if (msecsSince(data->freekickKickoffStartTime) > KICKOFF_DURATION * 1000) {
         data->isFreekickKickingOff = false;
         data->isDirectShoot = false;
+        data->useFakeGoal = false; // [#15] 超时重置
     }
 
     static int lastScore = 0;
@@ -646,6 +655,14 @@ void Brain::handleCooperation() {
 
     tree->setEntry<bool>("is_lead", data->tmImLead);
 
+    // [#9] 填充自身 TMStatus 用于通信（球速、机器人速度、意图）
+    int selfIdx = config->playerId - 1;
+    data->tmStatus[selfIdx].ballVelX = data->ballVelX;
+    data->tmStatus[selfIdx].ballVelY = data->ballVelY;
+    data->tmStatus[selfIdx].robotVelX = data->robotVelX;
+    data->tmStatus[selfIdx].robotVelY = data->robotVelY;
+    data->tmStatus[selfIdx].intention = data->myIntention;
+
     if (
         (tree->getEntry<string>("gc_game_state") == "READY" || tree->getEntry<string>("gc_game_sub_state") == "GET_READY") 
         && gcAliveCount == numOfPlayers
@@ -712,6 +729,21 @@ void Brain::updateBallMemory()
     updateRelativePos(data->ball);
     updateRelativePos(data->tmBall);
     tree->setEntry<double>("ball_range", data->ball.range);
+
+    // [#5] 球速估算: 从球位置的历史差分计算速度 (指数移动平均)
+    if (data->ballDetected && tree->getEntry<bool>("ball_location_known")) {
+        auto now = get_clock()->now();
+        auto dt = (now - data->ballVelLastTime).seconds();
+        if (dt > 0.01 && dt < 1.0) {
+            double dx = data->ball.posToField.x - data->ballVelLastPos.x;
+            double dy = data->ball.posToField.y - data->ballVelLastPos.y;
+            double alpha = 0.3;
+            data->ballVelX = data->ballVelX * (1.0 - alpha) + (dx / dt) * alpha;
+            data->ballVelY = data->ballVelY * (1.0 - alpha) + (dy / dt) * alpha;
+        }
+        data->ballVelLastTime = now;
+        data->ballVelLastPos = data->ball.posToField;
+    }
 
 
 
@@ -908,6 +940,27 @@ void Brain::updateCostToKick() {
 
     }
     
+    // [#10] 考虑球速方向: 如果机器人面向球运动方向, cost 降低
+    double ballSpeed = norm(data->ballVelX, data->ballVelY);
+    if (ballSpeed > 0.3) {
+        double ballDir = atan2(data->ballVelY, data->ballVelX);
+        double robotDir = data->robotPoseToField.theta;
+        double dirDiff = fabs(toPInPI(ballDir - robotDir));
+        if (dirDiff < M_PI / 3) {
+            cost *= 0.8;
+            log_(format("ball vel direction aligned, cost *= 0.8"));
+        }
+    }
+
+    // [#10] 考虑场地位置: 前场 cost 降低, 鼓励进攻; 后场 cost 升高
+    double fieldPosFactor = 1.0;
+    if (data->robotPoseToField.x > 0) {
+        fieldPosFactor = 0.9;
+    } else if (data->robotPoseToField.x < -config->fieldDimensions.length / 4) {
+        fieldPosFactor = 1.1;
+    }
+    cost *= fieldPosFactor;
+
     double lastCost = data->tmMyCost;
     data->tmMyCost = lastCost * 0.8 + cost * 0.2;
     log_(format("lastCost: %.1f, newCost: %.1f, smoothCost: %.1f", lastCost, cost, data->tmMyCost));

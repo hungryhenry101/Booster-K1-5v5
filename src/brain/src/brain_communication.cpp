@@ -369,6 +369,11 @@ void BrainCommunication::unicastCommunication() {
         msg.thetaRb = brain->data->robotBallAngleToField;
         msg.cmdId = brain->data->tmMyCmdId;
         msg.cmd = brain->data->tmMyCmd;
+        msg.ballVelX = brain->data->ballVelX; // [#9]
+        msg.ballVelY = brain->data->ballVelY; // [#9]
+        msg.robotVelX = brain->data->robotVelX; // [#9]
+        msg.robotVelY = brain->data->robotVelY; // [#9]
+        msg.intention = brain->data->myIntention; // [#9]
         log(format("ImAlive: %d, ImLead: %d, myCost: %.1f, myCmdId: %d, myCmd: %d", msg.isAlive, msg.isLead, msg.cost, msg.cmdId, msg.cmd));
 
         std::lock_guard<std::mutex> lock(_teammate_addresses_mutex);
@@ -532,6 +537,11 @@ void BrainCommunication::spinCommunicationReceiver() {
         tmStatus.timeLastCom = brain->get_clock()->now();
         tmStatus.cmd = msg.cmd;
         tmStatus.cmdId = msg.cmdId;
+        tmStatus.ballVelX = msg.ballVelX; // [#9]
+        tmStatus.ballVelY = msg.ballVelY; // [#9]
+        tmStatus.robotVelX = msg.robotVelX; // [#9]
+        tmStatus.robotVelY = msg.robotVelY; // [#9]
+        tmStatus.intention = msg.intention; // [#9]
 
         // 检查是否收到了新的指令
         if (msg.cmdId > brain->data->tmCmdId) {
