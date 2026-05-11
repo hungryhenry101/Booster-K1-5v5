@@ -61,9 +61,11 @@ public:
     double ballVelX = 0.;         // [#5][#9] 球的估计速度, field 坐标系, x 分量
     double ballVelY = 0.;         // [#5][#9] 球的估计速度, field 坐标系, y 分量
     rclcpp::Time ballVelLastTime; // [#5] 上一次更新球速的时间
-    Point ballVelLastPos;         // [#5] 上一次更新球速时球的位置
+    Point ballVelLastPos = {0.0, 0.0, 0.0}; // [#5] 上一次更新球速时球的位置
     double robotVelX = 0.;        // [#9] 机器人速度, field 坐标系, x 分量
     double robotVelY = 0.;        // [#9] 机器人速度, field 坐标系, y 分量
+    rclcpp::Time robotVelLastTime; // [#5] 上一次更新机器人速度的时间
+    Pose2D robotVelLastPose;       // [#5] 上一次更新机器人速度时的位姿
     vector<array<double, 2>> predictedBallPos; // 预测的球的位置, 单位 m, 相对于球场坐标系. 第一维为 x, 第二维为 y
     rclcpp::Time ballPosPredictTime; // 上一次进行预测的球的位置的时间戳
     bool ballWillBreach = false; // 是否会从机器人身边穿过

@@ -955,7 +955,7 @@ NodeStatus Adjust::tick()
     }
     double adjustElapsed = brain->msecsSince(brain->data->adjustStartTime) / 1000.0;
     if (adjustElapsed > brain->data->adjustTimeoutSecs) {
-        brain->tree->setEntry("decision", "chase");
+        brain->tree->setEntry<string>("decision", "chase");
         return NodeStatus::SUCCESS;
     }
 
@@ -1113,9 +1113,8 @@ NodeStatus CalcKickDir::tick()
         // 在开球时, 决策要不要传中
         brain->data->kickType = "cross";
         brain->data->useFakeGoal = false; // [#15-B] 开球传中不启用假球门
-        auto fd = brain->config->fieldDimensions;
-        if (ballPos.y > fd.width / 2.0  * 0.8) brain->data->kickDir = - M_PI / 2.0;
-        if (ballPos.y < -fd.width / 2.0  * 0.8) brain->data->kickDir =  M_PI / 2.0;
+        if (bPos.y > fd.width / 2.0  * 0.8) brain->data->kickDir = - M_PI / 2.0;
+        if (bPos.y < -fd.width / 2.0  * 0.8) brain->data->kickDir =  M_PI / 2.0;
     }
     else if (
         brain->data->isFreekickKickingOff 
@@ -1926,7 +1925,7 @@ NodeStatus RobotFindBall::onRunning()
     // [#8] 检查是否有队友看到球, 用队友提供的球位置转向
     bool tmBallPosReliable = brain->tree->getEntry<bool>("tm_ball_pos_reliable");
     if (tmBallPosReliable) {
-        Point tmBallPos;
+        Point tmBallPos = {0.0, 0.0, 0.0};
         double minCost = 1e6;
         for (int i = 0; i < HL_MAX_NUM_PLAYERS; i++) {
             if (brain->data->tmStatus[i].ballLocationKnown) {

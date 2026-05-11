@@ -672,6 +672,18 @@ void Brain::handleCooperation() {
         log_(format("all teammates on field. Back to initial role: %s", config->playerRole.c_str()));
     }
 
+    // [#9] 根据当前 decision 更新意图, 用于团队通信
+    string curDecision = tree->getEntry<string>("decision");
+    if (curDecision == "chase") data->myIntention = static_cast<int>(RobotIntention::CHASING);
+    else if (curDecision == "kick" || curDecision == "cross" || curDecision == "pass"
+             || curDecision == "safe_shoot" || curDecision == "auto_visual_kick")
+        data->myIntention = static_cast<int>(RobotIntention::KICKING);
+    else if (curDecision == "retreat" || curDecision == "assist")
+        data->myIntention = static_cast<int>(RobotIntention::DEFENDING);
+    else if (curDecision == "adjust")
+        data->myIntention = static_cast<int>(RobotIntention::POSITIONING);
+    else data->myIntention = static_cast<int>(RobotIntention::IDLE);
+
     return;
 }
 
@@ -1709,6 +1721,19 @@ void Brain::odometerCallback(const booster_interface::msg::Odometer &msg)
         data->robotPoseToOdom.x, data->robotPoseToOdom.y, data->robotPoseToOdom.theta,
         data->odomToField.x, data->odomToField.y, data->odomToField.theta,
         data->robotPoseToField.x, data->robotPoseToField.y, data->robotPoseToField.theta);
+
+    // [#5] 机器人速度估算: 从位姿历史差分计算 (EMA)
+    auto now = get_clock()->now();
+    auto dt = (now - data->robotVelLastTime).seconds();
+    if (dt > 0.01 && dt < 1.0) {
+        double dx = data->robotPoseToField.x - data->robotVelLastPose.x;
+        double dy = data->robotPoseToField.y - data->robotVelLastPose.y;
+        double alpha = 0.3;
+        data->robotVelX = data->robotVelX * (1.0 - alpha) + (dx / dt) * alpha;
+        data->robotVelY = data->robotVelY * (1.0 - alpha) + (dy / dt) * alpha;
+    }
+    data->robotVelLastTime = now;
+    data->robotVelLastPose = data->robotPoseToField;
 
     // 发布tf变换
     geometry_msgs::msg::TransformStamped transform;
