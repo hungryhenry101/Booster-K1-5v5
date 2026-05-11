@@ -58,6 +58,12 @@ public:
     GameObject tmBall;            // 队友传来的球的信息
     double robotBallAngleToField; // 机器人到球的向量, 在球场坐标系中与 X 轴的夹角, (-PI,PI]
     bool lose_ball = false;       // 视觉丢球状态, 用于 visual kick 的退出判定
+    double ballVelX = 0.;         // [#5][#9] 球的估计速度, field 坐标系, x 分量
+    double ballVelY = 0.;         // [#5][#9] 球的估计速度, field 坐标系, y 分量
+    rclcpp::Time ballVelLastTime; // [#5] 上一次更新球速的时间
+    Point ballVelLastPos;         // [#5] 上一次更新球速时球的位置
+    double robotVelX = 0.;        // [#9] 机器人速度, field 坐标系, x 分量
+    double robotVelY = 0.;        // [#9] 机器人速度, field 坐标系, y 分量
     vector<array<double, 2>> predictedBallPos; // 预测的球的位置, 单位 m, 相对于球场坐标系. 第一维为 x, 第二维为 y
     rclcpp::Time ballPosPredictTime; // 上一次进行预测的球的位置的时间戳
     bool ballWillBreach = false; // 是否会从机器人身边穿过
@@ -127,6 +133,9 @@ public:
     double kickDir = 0.; // 在决策中规划的踢球方向, field 坐标系
     string kickType = "shoot"; // "shoot" | "cross" | "block"
     bool isDirectShoot = false; // 在直接任意球开球的时候, 这个值会为 true; 执行了踢球动作或超过规定时间, 这个值会被 handleSpecialStates 重置为 false
+    bool useFakeGoal = false;   // [#15] 是否使用假球门 (用于 freekick 传中场景, 让 visual kick 往中场传球而不是往球门踢)
+    Point2D fakeGoalPos = {0.0, 0.0}; // [#15] 假球门在球场坐标系中的位置
+    int passTargetPlayerId = -1; // [#3] 传球目标队友的 playerId, -1 表示无目标
 
 
     // 双机配合, tm: teammate
@@ -143,6 +152,10 @@ public:
     int myStrikerIDRank = 0; // 我的 ID 在前锋中的排名, 用于多机配合. 
     bool tmImInVisualKick = false; // 自己是否处于 visual kick 模式
     bool shouldExitRLVisionKick = false; // 是否需要主动退出 visual kick 模式
+    int myIntention = 0; // [#9] 当前意图, 对应 RobotIntention 枚举值
+    rclcpp::Time adjustStartTime; // [#7] Adjust 开始时间
+    bool adjustTimerActive = false; // [#7] Adjust 计时器是否活跃
+    double adjustTimeoutSecs = 5.0; // [#7] Adjust 超时秒数
 
     // 通讯相关
     int discoveryMsgId = 0;
