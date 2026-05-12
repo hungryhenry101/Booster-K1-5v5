@@ -1732,7 +1732,8 @@ NodeStatus RobotFindBall::onStart()
 
 NodeStatus RobotFindBall::onRunning()
 {
-    auto log = [=](string msg) {
+    auto log = [=](string msg)
+    {
         // brain->log->setTimeNow();
         // brain->log->log("debug/RobotFindBall", rerun::TextLog(msg));
     };
@@ -1742,6 +1743,34 @@ NodeStatus RobotFindBall::onRunning()
     {
         brain->client->setVelocity(0, 0, 0);
         return NodeStatus::SUCCESS;
+    }
+
+    // [#8] 检查是否有队友看到球, 用队友提供的球位置转向
+    bool tmBallPosReliable = brain->tree->getEntry<bool>("tm_ball_pos_reliable");
+    if (tmBallPosReliable)
+    {
+        Point tmBallPos = {0.0, 0.0, 0.0};
+        double minCost = 1e6;
+        for (int i = 0; i < HL_MAX_NUM_PLAYERS; i++)
+        {
+            if (brain->data->tmStatus[i].ballLocationKnown)
+            {
+                double cost = brain->data->tmStatus[i].cost;
+                if (cost < minCost)
+                {
+                    minCost = cost;
+                    tmBallPos = brain->data->tmStatus[i].ballPosToField;
+                }
+            }
+        }
+        double dirToTmBall = atan2(tmBallPos.y - brain->data->robotPoseToField.y,
+                                   tmBallPos.x - brain->data->robotPoseToField.x);
+        double yawErr = toPInPI(dirToTmBall - brain->data->robotPoseToField.theta);
+        if (fabs(yawErr) > 0.3)
+        {
+            brain->client->setVelocity(0, 0, yawErr * 2.0);
+            return NodeStatus::RUNNING;
+        }
     }
 
     double vyawLimit;
