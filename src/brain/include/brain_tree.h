@@ -627,7 +627,7 @@ public:
     static BT::PortsList providedPorts() {
         return {
             InputPort<double>("dist_tolerance", 0.5, ""), InputPort<double>("theta_tolerance", 0.1, ""),
-            InputPort<double>("vx_limit", 0.5, ""), InputPort<double>("vy_limit", 0.5, ""),
+            InputPort<double>("vx_limit", 1.0, ""), InputPort<double>("vy_limit", 1.2, ""),
             InputPort<double>("dist_to_goalline", 1.0, ""),
         };
     }

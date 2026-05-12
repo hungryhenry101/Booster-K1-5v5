@@ -767,14 +767,34 @@ NodeStatus GoToGoalBlockingPosition::tick() {
 
     string curRole = brain->tree->getEntry<string>("player_role");
 
+    // [#5] 守门员预测站位: 根据球速预测球的落点
+    double ballVelX = brain->data->ballVelX;
+    double ballVelY = brain->data->ballVelY;
+    double ballSpeed = norm(ballVelX, ballVelY);
+
+    double predictTime = 0.0;
+    if (ballSpeed > 0.5) {
+        predictTime = min(1.0, (ballPos.x + fd.length / 2.0) / max(ballVelX, -0.1));
+        predictTime = max(predictTime, 0.0);
+    }
+
+    Point predictedBallPos;
+    predictedBallPos.x = ballPos.x + ballVelX * predictTime;
+    predictedBallPos.y = ballPos.y + ballVelY * predictTime;
+    predictedBallPos.x = cap(predictedBallPos.x, -fd.length / 2.0, fd.length / 2.0);
+    predictedBallPos.y = cap(predictedBallPos.y, -fd.width / 2.0, fd.width / 2.0);
+
+    bool usePrediction = (ballSpeed > 0.5 && ballVelX < -0.3);
+    auto effectiveBallPos = usePrediction ? predictedBallPos : ballPos;
+
     Pose2D targetPose;
-    targetPose.x = curRole == "striker" ? (std::max(- fd.length / 2.0 + distToGoalline, ballPos.x - 1.5))
+    targetPose.x = curRole == "striker" ? (std::max(- fd.length / 2.0 + distToGoalline, effectiveBallPos.x - 1.5))
             : (- fd.length / 2.0 + distToGoalline);
-    if (ballPos.x + fd.length / 2.0 < distToGoalline) {
-        targetPose.y = curRole == "striker" ? (ballPos.y > 0 ? fd.goalWidth / 2.0 : -fd.goalWidth / 2.0)
-            : (ballPos.y > 0 ? fd.goalWidth / 4.0 : -fd.goalWidth / 4.0);
+    if (effectiveBallPos.x + fd.length / 2.0 < distToGoalline) {
+        targetPose.y = curRole == "striker" ? (effectiveBallPos.y > 0 ? fd.goalWidth / 2.0 : -fd.goalWidth / 2.0)
+            : (effectiveBallPos.y > 0 ? fd.goalWidth / 4.0 : -fd.goalWidth / 4.0);
     } else {
-        targetPose.y = ballPos.y * distToGoalline / (ballPos.x + fd.length / 2.0);
+        targetPose.y = effectiveBallPos.y * distToGoalline / (effectiveBallPos.x + fd.length / 2.0);
         targetPose.y = curRole == "striker" ? (cap(targetPose.y, fd.goalWidth / 2.0, -fd.goalWidth / 2.0))
             : (cap(targetPose.y, fd.penaltyAreaWidth/ 2.0, -fd.penaltyAreaWidth / 2.0));
     }
@@ -797,6 +817,9 @@ NodeStatus GoToGoalBlockingPosition::tick() {
     double vxLimit, vyLimit;
     getInput("vx_limit", vxLimit);
     getInput("vy_limit", vyLimit);
+    if (usePrediction) {
+        vyLimit = min(vyLimit, 1.2);
+    }
     vx = cap(vx, vxLimit, -vxLimit);     // 进一步限速
     vy = cap(vy, vyLimit, -vyLimit);     // 进一步限速
      

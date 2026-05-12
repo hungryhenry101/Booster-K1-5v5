@@ -1208,7 +1208,7 @@ void Brain::joystickCallback(const booster_interface::msg::RemoteControllerState
         if (joy.hat_u || joy.hat_d)
         {
             config->vxFactor += 0.01 * (joy.hat_u ? 1.0 : -1.0);
-            f.open("/home/booster/Workspace/Booster-K1-5v5/vxFactor.txt", ios::out);
+            f.open("/home/booster/Workspace/vxFactor.txt", ios::out);
             f << config->vxFactor << endl;
             f.close();
             speak(format("vx factor: %.2f", config->vxFactor));
@@ -1221,7 +1221,7 @@ void Brain::joystickCallback(const booster_interface::msg::RemoteControllerState
         if (joy.hat_l || joy.hat_r)
         {
             config->yawOffset += 0.01 * (joy.hat_r ? 1.0 : -1.0);
-            f.open("/home/booster/Workspace/Booster-K1-5v5/yawOffset.txt", ios::out);
+            f.open("/home/booster/Workspace/yawOffset.txt", ios::out);
             f << config->yawOffset << endl;
             f.close();
             speak(format("yaw offset: %.2f", config->yawOffset));
