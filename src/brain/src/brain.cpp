@@ -167,6 +167,8 @@ void Brain::init()
     data->timeLastLineDet = get_clock()->now();
     data->timeLastGamecontrolMsg = get_clock()->now();
     data->ball.timePoint = get_clock()->now();
+    data->ballVelLastTime = get_clock()->now();
+    data->robotVelLastTime = get_clock()->now();
 
     
     auto now = get_clock()->now();
@@ -656,7 +658,7 @@ void Brain::handleCooperation() {
     tree->setEntry<bool>("is_lead", data->tmImLead);
 
     // [#9] 填充自身 TMStatus 用于通信（球速、机器人速度、意图）
-    int selfIdx = config->playerId - 1;
+    selfIdx = config->playerId - 1;
     data->tmStatus[selfIdx].ballVelX = data->ballVelX;
     data->tmStatus[selfIdx].ballVelY = data->ballVelY;
     data->tmStatus[selfIdx].robotVelX = data->robotVelX;
