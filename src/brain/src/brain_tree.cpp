@@ -68,6 +68,7 @@ void BrainTree::init()
     REGISTER_BUILDER(MoveToPoseOnField)
     REGISTER_BUILDER(GoBackInField)
     REGISTER_BUILDER(GoalieDecide)
+    REGISTER_BUILDER(GoalieSave)
     REGISTER_BUILDER(DecideCheckBehind)
     REGISTER_BUILDER(WaveHand)
     REGISTER_BUILDER(MoveHead)
@@ -1426,6 +1427,103 @@ NodeStatus GoalieDecide::tick()
                             format("Decision: %s ballrange: %.2f ballyaw: %.2f kickDir: %.2f rbDir: %.2f angleIsGood: %d", newDecision.c_str(), ballRange, ballYaw, kickDir, dir_rb_f, angleIsGood),
                             color);
     return NodeStatus::SUCCESS;
+}
+
+NodeStatus GoalieSave::tick()
+{
+    static rclcpp::Time lastSaveTime(0, 0, RCL_ROS_TIME);
+    // 冷却时间内直接返回 RUNNING，防止与其他动作冲突或重复触发
+    if (brain->msecsSince(lastSaveTime) < 2000) {
+        return NodeStatus::RUNNING;
+    }
+
+    if (!brain->data->ballDetected) return NodeStatus::SUCCESS;
+
+    auto bPos = brain->data->ball.posToField;
+    double vx = brain->data->ballVelX;
+    double vy = brain->data->ballVelY;
+    
+    // 1. Check if the ball is moving towards our goal
+    if (vx > -0.1) return NodeStatus::SUCCESS; 
+
+    double speed = hypot(vx, vy);
+
+    auto fd = brain->config->fieldDimensions;
+    double goalX = -fd.length / 2.0;
+
+    double t_goal = (goalX - bPos.x) / vx;
+    if (t_goal <= 0 || t_goal > 3.0) return NodeStatus::SUCCESS; 
+
+    double y_intersect = bPos.y + vy * t_goal;
+
+    // 角度能够进入球门
+    double goalWidth = fd.goalWidth;
+    double margin = 0.2; // buffer for goal width
+    if (fabs(y_intersect) > goalWidth / 2.0 + margin) {
+        return NodeStatus::SUCCESS;
+    }
+
+    // Determine the save direction and interception point
+    // Ensure we intercept the ball before it enters the goal (with a buffer)
+    double bufferX = 0.3; 
+    double interceptX = goalX + bufferX;
+    
+    if (bPos.x < interceptX) {
+        interceptX = bPos.x; 
+    }
+
+    double t_intercept = (interceptX - bPos.x) / vx;
+    if (t_intercept < 0) t_intercept = 0;
+    double interceptY = bPos.y + vy * t_intercept;
+
+    auto rPos = brain->data->robotPoseToField;
+
+    double dx = interceptX - rPos.x;
+    double dy = interceptY - rPos.y;
+
+    // Maximize save coverage area along the ball's trajectory
+    // Dive towards the intercept point
+    double saveDirField = atan2(dy, dx);
+    double saveDirRobot = toPInPI(saveDirField - rPos.theta);
+
+    double diveSpeed = 1.5; // velocity limit for diving
+    double diveVx = diveSpeed * cos(saveDirRobot);
+    double diveVy = diveSpeed * sin(saveDirRobot);
+
+    brain->client->setVelocity(diveVx, diveVy, 0.0, false, false, false);
+    
+    // Call enterDamping to make the robot dive
+    brain->client->enterDamping();
+    
+    brain->log->logToScreen("GoalieSave", format("Damping save! t_goal=%.2f y_intersect=%.2f", t_goal, y_intersect), 0xFF0000FF);
+
+    lastSaveTime = brain->get_clock()->now();
+
+    // 守门员倒地时，让离球门最近的球员切换为守门员，原来的守门员切换为前锋
+    int minIndex = -1;
+    double minDist = 1e6;
+    for (int i = 0; i < brain->config->numOfPlayers; i++) {
+        if (i == brain->config->playerId - 1) continue;
+        if (brain->data->tmStatus[i].isAlive) {
+            double x = brain->data->tmStatus[i].robotPoseToField.x;
+            double y = brain->data->tmStatus[i].robotPoseToField.y;
+            double dist = hypot(x - goalX, y);
+            if (dist < minDist) {
+                minDist = dist;
+                minIndex = i;
+            }
+        }
+    }
+    if (minIndex >= 0) {
+        brain->data->tmLastCmdChangeTime = brain->get_clock()->now();
+        brain->data->tmMyCmd = 10 + minIndex + 1; 
+        brain->data->tmCmdId += 1;
+        brain->data->tmMyCmdId = brain->data->tmCmdId;
+    }
+    brain->tree->setEntry<string>("player_role", "striker");
+
+    // 返回RUNNING，阻止后续防守动作(GoToGoalBlockingPosition)在同一tick被调用
+    return NodeStatus::RUNNING;
 }
 
 tuple<double, double, double> Kick::_calcSpeed() {
@@ -3702,20 +3800,38 @@ NodeStatus RoleSwitchIfNeeded::tick()
         }
     }
 
-    // 若没有守门员，则让 ID 最大的存活队员担任守门员
+    // 若没有守门员，则让离球门最近的存活队员担任守门员
     // 增加冷却时间判断，避免与 handleCooperation 中的手动角色切换冲突
     if (!hasGoalie && brain->msecsSince(brain->data->tmLastCmdChangeTime) > 2000)
     {
-        int lastAliveId = -1;
-        for (int i = brain->config->numOfPlayers - 1; i >= 0; i--) {
-            if (brain->data->penalty[i] == PENALTY_NONE) {
-                lastAliveId = i + 1;
-                break;
+        int bestId = -1;
+        double minDist = 1e9;
+        auto fd = brain->config->fieldDimensions;
+        double goalX = -fd.length / 2.0;
+        
+        for (int i = 0; i < brain->config->numOfPlayers; i++) {
+            bool isAlive = false;
+            double x, y;
+            if (i == brain->config->playerId - 1) {
+                isAlive = (brain->data->penalty[i] == PENALTY_NONE);
+                x = brain->data->robotPoseToField.x;
+                y = brain->data->robotPoseToField.y;
+            } else {
+                isAlive = brain->data->tmStatus[i].isAlive;
+                x = brain->data->tmStatus[i].robotPoseToField.x;
+                y = brain->data->tmStatus[i].robotPoseToField.y;
+            }
+            if (isAlive) {
+                double dist = std::hypot(x - goalX, y);
+                if (dist < minDist) {
+                    minDist = dist;
+                    bestId = i + 1;
+                }
             }
         }
 
-        if (lastAliveId != -1) {
-            if (brain->config->playerId == lastAliveId) {
+        if (bestId != -1) {
+            if (brain->config->playerId == bestId) {
                 newRole = "goal_keeper";
             }
             else {

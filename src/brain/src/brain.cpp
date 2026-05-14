@@ -528,27 +528,45 @@ void Brain::handleCooperation() {
             }
         }
 
-        // 若当前场上没有守门员，且不在手动切换角色的冷却期，则让 ID 最大的队员担任守门员
+        // 若当前场上没有守门员，且不在手动切换角色的冷却期，则让离球门最近的队员担任守门员
         if (!hasGoalie && msecsSince(data->tmLastCmdChangeTime) > CMD_COOLDOWN) {
-            int lastAliveId = -1;
-            for (int i = config->numOfPlayers - 1; i >= 0; i--) {
-                if (data->penalty[i] == PENALTY_NONE) {
-                    lastAliveId = i + 1;
-                    break;
+            int bestId = -1;
+            double minDist = 1e9;
+            double goalX = -config->fieldDimensions.length / 2.0;
+            
+            for (int i = 0; i < config->numOfPlayers; i++) {
+                bool isAlive = false;
+                double x, y;
+                if (i == selfIdx) {
+                    isAlive = (data->penalty[i] == PENALTY_NONE);
+                    x = data->robotPoseToField.x;
+                    y = data->robotPoseToField.y;
+                } else {
+                    isAlive = data->tmStatus[i].isAlive;
+                    x = data->tmStatus[i].robotPoseToField.x;
+                    y = data->tmStatus[i].robotPoseToField.y;
+                }
+                if (isAlive) {
+                    double dist = hypot(x - goalX, y);
+                    if (dist < minDist) {
+                        minDist = dist;
+                        bestId = i + 1;
+                    }
                 }
             }
-            if (lastAliveId != -1) {
-                if (config->playerId == lastAliveId) {
+
+            if (bestId != -1) {
+                if (config->playerId == bestId) {
                     if (tree->getEntry<string>("player_role") != "goal_keeper") {
                         tree->setEntry<string>("player_role", "goal_keeper");
-                        log_("No goalie on field, I'm max ID, becoming goalie");
+                        log_("No goalie on field, I'm closest to goal, becoming goalie");
                         speak("i become goalie", true);
                     }
                 } else if (data->penalty[selfIdx] == PENALTY_NONE) {
-                    // 如果我不是最大 ID，且我也没被罚下，则确保我是前锋
+                    // 如果我不是最近的，且我也没被罚下，则确保我是前锋
                     if (tree->getEntry<string>("player_role") != "striker") {
                         tree->setEntry<string>("player_role", "striker");
-                        log_("No goalie on field, I'm not max ID, becoming striker");
+                        log_("No goalie on field, I'm not closest, becoming striker");
                     }
                 }
             }

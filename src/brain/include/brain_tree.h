@@ -398,6 +398,14 @@ private:
 
 // 守门员动作
 class GoalieSquat : public SyncActionNode { public: GoalieSquat(const string &n, const NodeConfig &c, Brain *b) : SyncActionNode(n,c), brain(b) {} NodeStatus tick() override { return NodeStatus::SUCCESS; } static PortsList providedPorts() { return {}; } private: Brain *brain; };
+class GoalieSave : public SyncActionNode {
+public:
+    GoalieSave(const string &name, const NodeConfig &config, Brain *b) : SyncActionNode(name, config), brain(b) {}
+    NodeStatus tick() override;
+    static PortsList providedPorts() { return {}; }
+private:
+    Brain *brain;
+};
 class GoalieStandUp : public SyncActionNode { public: GoalieStandUp(const string &n, const NodeConfig &c, Brain *b) : SyncActionNode(n,c), brain(b) {} NodeStatus tick() override { return NodeStatus::SUCCESS; } static PortsList providedPorts() { return {}; } private: Brain *brain; };
 
 class SelfLocate : public SyncActionNode
