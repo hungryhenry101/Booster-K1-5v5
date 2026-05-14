@@ -1910,7 +1910,8 @@ NodeStatus RobotFindBall::onStart()
 
 NodeStatus RobotFindBall::onRunning()
 {
-    auto log = [=](string msg) {
+    auto log = [=](string msg)
+    {
         // brain->log->setTimeNow();
         // brain->log->log("debug/RobotFindBall", rerun::TextLog(msg));
     };
