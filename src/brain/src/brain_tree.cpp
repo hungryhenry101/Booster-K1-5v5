@@ -443,6 +443,15 @@ NodeStatus Chase::tick()
         vtheta = targetDir;
         if (fabs(targetDir) < 0.1 && ballRange > 2.0) vtheta = 0.0;
         vx *= sigmoid(fabs(vtheta), 1, 3);
+
+        // [#7] 根据距离动态调整速度: 远距离加速, 近距离减速以精确控球
+        double speedFactor = 1.0;
+        if (ballRange > 2.0) {
+            speedFactor = 1.2;
+        } else if (ballRange < 0.5) {
+            speedFactor = 0.5;
+        }
+        vx *= speedFactor;
     }
 
     vx = cap(vx, vxLimit, -vxLimit);
@@ -518,6 +527,13 @@ NodeStatus GoToFreekickPosition::onRunning() {
     const double defenseDir = atan2(ballPos.y, ballPos.x + fd.length / 2.0); // 防守方向：从球指向己方球门的单位向量角度
     // 和 assist 对齐：freekick 按 tmMyCostRank 分工，不再按前锋序号。
     const int rank = brain->data->tmMyCostRank;
+    bool isFreekickPassScenario = brain->data->isFreekickKickingOff
+        && !brain->data->isDirectShoot
+        && (brain->data->realGameSubState == "CORNER_KICK"
+            || brain->data->realGameSubState == "GOAL_KICK"
+            || brain->data->realGameSubState == "THROW_IN"
+            || brain->data->realGameSubState == "INDIRECT_FREEKICK");
+
     if (side == "attack") {
         double attackDist = 0.7;
         getInput("attack_dist", attackDist);
@@ -528,10 +544,19 @@ NodeStatus GoToFreekickPosition::onRunning() {
             targetPose.y = ballPos.y - attackDist * sin(kickDir);
             targetPose.theta = kickDir;
         } else if (rank == 1) {
-            // 辅助队员：站在球后方 2 米处，方向指向己方球门（defenseDir）
-            targetPose.x = ballPos.x - 2.0 * cos(defenseDir);
-            targetPose.y = ballPos.y - 2.0 * sin(defenseDir);
-            targetPose.theta = defenseDir;
+            if (isFreekickPassScenario) {
+                // [#15] 任意球传中场景: rank==1 的机器人站在中场假球门位置, 准备接球后射门
+                double receiveX = brain->data->fakeGoalPos.x;
+                double receiveY = brain->data->fakeGoalPos.y;
+                targetPose.x = receiveX - 1.0;
+                targetPose.y = receiveY;
+                targetPose.theta = atan2(ballPos.y - receiveY, ballPos.x - receiveX);
+            } else {
+                // 辅助队员：站在球后方 2 米处，方向指向己方球门（defenseDir）
+                targetPose.x = ballPos.x - 2.0 * cos(defenseDir);
+                targetPose.y = ballPos.y - 2.0 * sin(defenseDir);
+                targetPose.theta = defenseDir;
+            }
         } else if (rank == 2) {
             // 后场右侧
             targetPose.x = - fd.length / 2.0 + fd.penaltyDist;
@@ -728,14 +753,34 @@ NodeStatus GoToGoalBlockingPosition::tick() {
 
     string curRole = brain->tree->getEntry<string>("player_role");
 
+    // [#5] 守门员预测站位: 根据球速预测球的落点
+    double ballVelX = brain->data->ballVelX;
+    double ballVelY = brain->data->ballVelY;
+    double ballSpeed = norm(ballVelX, ballVelY);
+
+    double predictTime = 0.0;
+    if (ballSpeed > 0.5) {
+        predictTime = min(1.0, (ballPos.x + fd.length / 2.0) / max(ballVelX, -0.1));
+        predictTime = max(predictTime, 0.0);
+    }
+
+    Point predictedBallPos;
+    predictedBallPos.x = ballPos.x + ballVelX * predictTime;
+    predictedBallPos.y = ballPos.y + ballVelY * predictTime;
+    predictedBallPos.x = cap(predictedBallPos.x, -fd.length / 2.0, fd.length / 2.0);
+    predictedBallPos.y = cap(predictedBallPos.y, -fd.width / 2.0, fd.width / 2.0);
+
+    bool usePrediction = (ballSpeed > 0.5 && ballVelX < -0.3);
+    auto effectiveBallPos = usePrediction ? predictedBallPos : ballPos;
+
     Pose2D targetPose;
-    targetPose.x = curRole == "striker" ? (std::max(- fd.length / 2.0 + distToGoalline, ballPos.x - 1.5))
+    targetPose.x = curRole == "striker" ? (std::max(- fd.length / 2.0 + distToGoalline, effectiveBallPos.x - 1.5))
             : (- fd.length / 2.0 + distToGoalline);
-    if (ballPos.x + fd.length / 2.0 < distToGoalline) {
-        targetPose.y = curRole == "striker" ? (ballPos.y > 0 ? fd.goalWidth / 2.0 : -fd.goalWidth / 2.0)
-            : (ballPos.y > 0 ? fd.goalWidth / 4.0 : -fd.goalWidth / 4.0);
+    if (effectiveBallPos.x + fd.length / 2.0 < distToGoalline) {
+        targetPose.y = curRole == "striker" ? (effectiveBallPos.y > 0 ? fd.goalWidth / 2.0 : -fd.goalWidth / 2.0)
+            : (effectiveBallPos.y > 0 ? fd.goalWidth / 4.0 : -fd.goalWidth / 4.0);
     } else {
-        targetPose.y = ballPos.y * distToGoalline / (ballPos.x + fd.length / 2.0);
+        targetPose.y = effectiveBallPos.y * distToGoalline / (effectiveBallPos.x + fd.length / 2.0);
         targetPose.y = curRole == "striker" ? (cap(targetPose.y, fd.goalWidth / 2.0, -fd.goalWidth / 2.0))
             : (cap(targetPose.y, fd.penaltyAreaWidth/ 2.0, -fd.penaltyAreaWidth / 2.0));
     }
@@ -758,6 +803,9 @@ NodeStatus GoToGoalBlockingPosition::tick() {
     double vxLimit, vyLimit;
     getInput("vx_limit", vxLimit);
     getInput("vy_limit", vyLimit);
+    if (usePrediction) {
+        vyLimit = min(vyLimit, 1.2);
+    }
     vx = cap(vx, vxLimit, -vxLimit);     // 进一步限速
     vy = cap(vy, vyLimit, -vyLimit);     // 进一步限速
      
@@ -805,9 +853,25 @@ NodeStatus Assist::tick() {
         targetPose.y = ballPos.y * (targetPose.x + fd.length / 2.0) / (ballPos.x + fd.length / 2.0); // 可以挡住球的位置
         log("tmMyCostRank == 0, using default assist position");
     } else if (brain->data->tmMyCostRank == 1) {
-        targetPose.x = ballPos.x - 2.0;
-        targetPose.x = max(targetPose.x, - fd.length / 2.0 + distToGoalline); // 不要太接近底线
-        targetPose.y = ballPos.y * (targetPose.x + fd.length / 2.0) / (ballPos.x + fd.length / 2.0); // 可以挡住球的位置
+        if (aggressiveAssist) {
+            // [#2] 前插接应：在球前方 2.5 米处，沿踢球方向
+            double supportDist = 2.5;
+            double kickDir = brain->data->kickDir;
+            targetPose.x = ballPos.x + supportDist * cos(kickDir);
+            targetPose.y = ballPos.y + supportDist * sin(kickDir);
+            if (targetPose.x > oppGoalX - fd.goalAreaLength - 0.3) {
+                targetPose.x = oppGoalX - fd.goalAreaLength - 0.3;
+            }
+            if (fabs(targetPose.y) > fd.width / 2.0 - 1.0) {
+                targetPose.y = cap(targetPose.y, fd.width / 2.0 - 1.0, -fd.width / 2.0 + 1.0);
+            }
+            targetPose.theta = kickDir;
+            log("aggressive assist: positioning in front of ball");
+        } else {
+            targetPose.x = ballPos.x - 2.0;
+            targetPose.x = max(targetPose.x, - fd.length / 2.0 + distToGoalline);
+            targetPose.y = ballPos.y * (targetPose.x + fd.length / 2.0) / (ballPos.x + fd.length / 2.0);
+        }
     } else if (brain->data->tmMyCostRank == 2) {  //todo 之后的assist时候的tmMyCostRank不考虑守门员的cost
         // targetPose.x = ballPos.x - 2.0;
         // targetPose.x = max(targetPose.x, - fd.length / 2.0 + distToGoalline); // 不要太接近底线
@@ -883,6 +947,18 @@ NodeStatus Adjust::tick()
         return NodeStatus::SUCCESS;
     }
 
+    // [#7] Adjust 超时机制: 防止机器人在 Adjust 状态卡住
+    auto now = brain->get_clock()->now();
+    if (!brain->data->adjustTimerActive) {
+        brain->data->adjustStartTime = now;
+        brain->data->adjustTimerActive = true;
+    }
+    double adjustElapsed = brain->msecsSince(brain->data->adjustStartTime) / 1000.0;
+    if (adjustElapsed > brain->data->adjustTimeoutSecs) {
+        brain->tree->setEntry<string>("decision", "chase");
+        return NodeStatus::SUCCESS;
+    }
+
     double turnThreshold, vxLimit, vyLimit, vthetaLimit, range;
     double stFar, stNear, vthetaFactor, nearThreshold, noTurnThreshold, turnFirstThreshold;
     getInput("turn_threshold", turnThreshold);
@@ -954,8 +1030,74 @@ NodeStatus CalcKickDir::tick()
     auto fd = brain->config->fieldDimensions;
     auto color = 0xFFFFFFFF; // for log
 
+    // [#3] 传球决策: 射门角度不好时, 寻找最佳传球目标
+    brain->data->passTargetPlayerId = -1;
+    bool angleGoodForShoot = brain->isAngleGood(0.3, "shoot");
+    bool enablePass;
+    brain->get_parameter("strategy.enable_pass", enablePass);
+
+    if (!angleGoodForShoot && enablePass && brain->data->tmImLead) {
+        int bestTmIdx = -1;
+        double bestTmScore = -1e6;
+        int selfIdx = brain->config->playerId - 1;
+
+        for (int i = 0; i < HL_MAX_NUM_PLAYERS; i++) {
+            if (i == selfIdx) continue;
+            auto tmStatus = brain->data->tmStatus[i];
+            if (!tmStatus.isAlive) continue;
+            if (tmStatus.role == "goal_keeper") continue;
+
+            auto tmPos = tmStatus.robotPoseToField;
+            double tmDistToBall = norm(tmPos.x - bPos.x, tmPos.y - bPos.y);
+            if (tmDistToBall < 1.0) continue;
+
+            double passDir = atan2(tmPos.y - bPos.y, tmPos.x - bPos.x);
+            double dirToGoal = atan2(-bPos.y, fd.length / 2.0 - bPos.x);
+            double angleToGoal = fabs(toPInPI(passDir - dirToGoal));
+
+            double score = tmPos.x - angleToGoal * 2.0 - tmDistToBall * 0.5;
+            if (tmPos.x > bPos.x) score += 3.0;
+
+            if (score > bestTmScore) {
+                bestTmScore = score;
+                bestTmIdx = i;
+            }
+        }
+
+        if (bestTmIdx >= 0) {
+            auto tmPos = brain->data->tmStatus[bestTmIdx].robotPoseToField;
+            double passDir = atan2(tmPos.y - bPos.y, tmPos.x - bPos.x);
+            double passDist = norm(tmPos.x - bPos.x, tmPos.y - bPos.y);
+
+            if (passDist < 8.0 && passDist > 1.5) {
+                brain->data->kickType = "pass";
+                brain->data->kickDir = passDir;
+                brain->data->passTargetPlayerId = bestTmIdx + 1;
+                return NodeStatus::SUCCESS;
+            }
+        }
+    }
+
+    // [#4] 传中判断: 检查禁区内是否有队友
+    bool hasTeammateInBox = false;
     if (thetal - thetar < crossThreshold && brain->data->ball.posToField.x > fd.circleRadius) {
+        int selfIdx = brain->config->playerId - 1;
+        for (int i = 0; i < HL_MAX_NUM_PLAYERS; i++) {
+            if (i == selfIdx) continue;
+            auto tmStatus = brain->data->tmStatus[i];
+            if (!tmStatus.isAlive) continue;
+            auto tmPos = tmStatus.robotPoseToField;
+            if (tmPos.x > fd.length / 2.0 - fd.penaltyAreaLength - 1.0
+                && fabs(tmPos.y) < fd.penaltyAreaWidth / 2.0 + 1.0) {
+                hasTeammateInBox = true;
+                break;
+            }
+        }
+    }
+
+    if (thetal - thetar < crossThreshold && brain->data->ball.posToField.x > fd.circleRadius && hasTeammateInBox) {
         brain->data->kickType = "cross";
+        brain->data->useFakeGoal = false; // [#15-A] 普通 cross 不启用假球门
         color = 0xFF00FFFF;
         brain->data->kickDir = atan2(
             - bPos.y,
@@ -970,15 +1112,37 @@ NodeStatus CalcKickDir::tick()
     ) {
         // 在开球时, 决策要不要传中
         brain->data->kickType = "cross";
+        brain->data->useFakeGoal = false; // [#15-B] 开球传中不启用假球门
+        if (bPos.y > fd.width / 2.0  * 0.8) brain->data->kickDir = - M_PI / 2.0;
+        if (bPos.y < -fd.width / 2.0  * 0.8) brain->data->kickDir =  M_PI / 2.0;
+    }
+    else if (
+        brain->data->isFreekickKickingOff 
+        && brain->isPrimaryStriker() 
+        && !brain->data->isDirectShoot
+        && (brain->data->realGameSubState == "CORNER_KICK"
+            || brain->data->realGameSubState == "GOAL_KICK"
+            || brain->data->realGameSubState == "THROW_IN"
+            || brain->data->realGameSubState == "INDIRECT_FREEKICK")
+    ) {
+        // [#15-C] 边线球 / 角球 / 门球 / 间接任意球: 使用假球门传中到中场
+        double fakeGoalX = 0.0;
+        double fakeGoalY = 0.0;
+        if (fabs(bPos.y) > fd.width / 2.0 * 0.5) {
+            fakeGoalY = (bPos.y > 0 ? -1.0 : 1.0);
+        }
+        brain->data->useFakeGoal = true; // [#15-C] 边线/角球/门球启用假球门
+        brain->data->fakeGoalPos = {fakeGoalX, fakeGoalY};
+        brain->data->kickType = "shoot";
         color = 0xFF00FFFF;
-        auto ballPos = brain->data->ball.posToField;
-        auto fd = brain->config->fieldDimensions;
-        if (ballPos.y > fd.width / 2.0  * 0.8) brain->data->kickDir = - M_PI / 2.0;
-        if (ballPos.y < -fd.width / 2.0  * 0.8) brain->data->kickDir =  M_PI / 2.0;
+        brain->data->kickDir = atan2(
+            fakeGoalY - bPos.y,
+            fakeGoalX - bPos.x
+        );
     }
     else if (brain->isDefensing()) {
         brain->data->kickType = "block";
-        color = 0xFFFF00FF;
+        brain->data->useFakeGoal = false; // [#15-D] 防守不开假球门
         brain->data->kickDir = atan2(
             bPos.y,
             bPos.x + fd.length/2
@@ -986,12 +1150,13 @@ NodeStatus CalcKickDir::tick()
 
     } else { // default to shoot
         brain->data->kickType = "shoot";
+        brain->data->useFakeGoal = false; // [#15-E]
         color = 0x00FF00FF;
         brain->data->kickDir = atan2(
             - bPos.y,
             fd.length/2 - bPos.x
         );
-        if (brain->data->ball.posToField.x > brain->config->fieldDimensions.length / 2) brain->data->kickDir = 0; // 已经过线了, 继续向前踢
+        if (brain->data->ball.posToField.x > brain->config->fieldDimensions.length / 2) brain->data->kickDir = 0;
     }
 
     brain->log->setTimeNow();
@@ -1118,6 +1283,17 @@ NodeStatus StrikerDecide::tick() {
         newDecision = "auto_visual_kick";
         brain->data->tmImInVisualKick = true;
         color = 0xFF00FFFF;
+    } else if ( // [#15-G] 使用假球门时触发 visual kick
+        brain->data->useFakeGoal
+        && brain->data->tmImLead
+        && brain->data->tmMyCostRank == 0
+        && ballRange < autoVisualKickEnableDistMax
+        && ballRange > autoVisualKickEnableDistMin
+        && fabs(ballYaw) < autoVisualKickEnableAngle * 1.5
+    ) {
+        newDecision = "auto_visual_kick";
+        brain->data->tmImInVisualKick = true;
+        color = 0xFF00FFFF;
     } else if (!brain->data->tmImLead) {
         newDecision = "assist";
         color = 0x00FFFFFF;
@@ -1139,6 +1315,7 @@ NodeStatus StrikerDecide::tick() {
     )
     {
         if (brain->data->kickType == "cross") newDecision = "cross";
+        else if (brain->data->kickType == "pass") newDecision = "pass"; // [#3] 传球分支
         else { // kickType == kick
             double threatThreshold;
             brain->get_parameter("strategy.shoot.threat_threshold", threatThreshold);
@@ -1147,6 +1324,7 @@ NodeStatus StrikerDecide::tick() {
         }        
         color = 0x00FF00FF;
         brain->data->isFreekickKickingOff = false; // 只要进一次 kick, 就不算是 kickoff 阶段了.
+        brain->data->useFakeGoal = false; // [#15-H] kick 后重置假球门
     }
     else
     {
@@ -1224,7 +1402,7 @@ NodeStatus GoalieDecide::tick()
                 fabs(brain->data->ball.yawToRobot) < autoVisualKickEnableAngle / 2 &&
                 brain->isFrontRangeClear(-autoVisualKickObstacleAngleThreshold / 2, autoVisualKickObstacleAngleThreshold / 2, autoVisualKickObstacleDistThreshold, 0.035)
             ) {
-    // 自动视觉踢球分支已删除
+        newDecision = "auto_visual_kick";
         color = 0xFF00FFFF;
     }
     else if (ballRange > chaseRangeThreshold * (lastDecision == "chase" ? 0.9 : 1.0))
@@ -1747,27 +1925,22 @@ NodeStatus RobotFindBall::onRunning()
 
     // [#8] 检查是否有队友看到球, 用队友提供的球位置转向
     bool tmBallPosReliable = brain->tree->getEntry<bool>("tm_ball_pos_reliable");
-    if (tmBallPosReliable)
-    {
+    if (tmBallPosReliable) {
         Point tmBallPos = {0.0, 0.0, 0.0};
         double minCost = 1e6;
-        for (int i = 0; i < HL_MAX_NUM_PLAYERS; i++)
-        {
-            if (brain->data->tmStatus[i].ballLocationKnown)
-            {
+        for (int i = 0; i < HL_MAX_NUM_PLAYERS; i++) {
+            if (brain->data->tmStatus[i].ballLocationKnown) {
                 double cost = brain->data->tmStatus[i].cost;
-                if (cost < minCost)
-                {
+                if (cost < minCost) {
                     minCost = cost;
                     tmBallPos = brain->data->tmStatus[i].ballPosToField;
                 }
             }
         }
         double dirToTmBall = atan2(tmBallPos.y - brain->data->robotPoseToField.y,
-                                   tmBallPos.x - brain->data->robotPoseToField.x);
+                                    tmBallPos.x - brain->data->robotPoseToField.x);
         double yawErr = toPInPI(dirToTmBall - brain->data->robotPoseToField.theta);
-        if (fabs(yawErr) > 0.3)
-        {
+        if (fabs(yawErr) > 0.3) {
             brain->client->setVelocity(0, 0, yawErr * 2.0);
             return NodeStatus::RUNNING;
         }

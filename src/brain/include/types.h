@@ -187,6 +187,15 @@ struct RobotRecoveryStateData {
     uint8_t current_planner_index;
 };
 
+enum class RobotIntention { // [#9] 丰富团队通信
+    CHASING = 0,
+    KICKING = 1,
+    DEFENDING = 2,
+    SUPPORTING = 3,
+    POSITIONING = 4,
+    IDLE = 5
+};
+
 // 用于存储队友间通讯
 struct TMStatus {
     string role = "not initialized"; // triker, goal_keeper
@@ -204,6 +213,11 @@ struct TMStatus {
     int cmd = 0; // 最后一次发出的指令 
     int cmdId = 0; // 最后一次发出的指令 ID
     rclcpp::Time timeLastCom; // 最后一次通讯时间
+    double ballVelX = 0.; // [#9]
+    double ballVelY = 0.; // [#9]
+    double robotVelX = 0.; // [#9]
+    double robotVelY = 0.; // [#9]
+    int intention = 0; // [#9]
 };
 
 

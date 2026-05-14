@@ -46,6 +46,8 @@ brain_node:
       near_border_dist_threshold: -1.0 # 靠近场地边界时的范围，在这个范围内，限制速度。注意，这里负值代表在场内.
       enable_bypass: false # 是否开启传球策略   ---UNUSED----
       enable_shoot: false # 是否使用 shoot    ---UNUSED----
+      enable_pass: true # [#3] 是否开启传球机制，射门角度不好时寻找队友传球
+      adjust_timeout_secs: 5.0 # [#7] Adjust 状态超时秒数，超时后强制切换到 chase
       enable_directional_kick: false # 为 true 时，在方向合适时会通过斜向踢球来将球往对方球门踢   ---UNUSED----
       use_squat_block: false # 是否使用蹲下挡球策略，如果为 true, 则守门员会蹲下挡球，否则只会站立挡球   ----Negative impact by true-------
       squat_block_msecs: 2000.0 # 蹲下挡球的时间，单位：毫秒
@@ -71,7 +73,7 @@ brain_node:
       auto_visual_kick_enable_dist_min: 0.2 # 视觉射门的距球距离最小值
       auto_visual_kick_enable_dist_max: 3.5 # 视觉射门的距球距离最大值
       auto_visual_kick_enable_angle: 0.5 # 机器人面朝方向与球之间允许的最大偏差角度
-      enable_auto_visual_defend: false # 守门员是否开启自动视觉 ----UNUSED----
+      enable_auto_visual_defend: true # 守门员是否开启自动视觉
 
       cooperation:
         enable_role_switch: true # 开启后，会根据场上裁判机上存活的队友数量，来自动决定自己的角色。
