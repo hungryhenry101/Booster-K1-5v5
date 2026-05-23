@@ -185,6 +185,8 @@ public:
     void onHalted() override;
 private:
     double _turnDir;
+    rclcpp::Time _timeLastHeadCmd;
+    int _headCmdIndex = 0;
     Brain *brain;
 };
 

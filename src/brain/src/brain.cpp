@@ -953,7 +953,26 @@ void Brain::updateCostToKick() {
         log_(format("localization cost: %.1f", 100.0));  
 
     }
-    
+
+    // Lead retention bonus (hysteresis) to prevent rapid lead-swapping when
+    // dribbling/kicking
+    if (data->tmImLead)
+    {
+        double lead_bonus = 1.0;
+        string decision = tree->getEntry<string>("decision");
+        if (decision == "kick" || decision == "adjust" ||
+            decision == "auto_visual_kick")
+        {
+            lead_bonus = 3.0; // Higher bonus when actively executing a kick/adjust
+        }
+        cost -= lead_bonus;
+        if (cost <= 0.0)
+            cost = 0.1;
+        log_(format(
+            "Currently lead, applying cost discount of %.1f. Raw cost: %.1f",
+            lead_bonus, cost));
+    }
+
     // [#10] 考虑球速方向: 如果机器人面向球运动方向, cost 降低
     double ballSpeed = norm(data->ballVelX, data->ballVelY);
     if (ballSpeed > 0.3) {

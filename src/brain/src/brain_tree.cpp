@@ -1903,6 +1903,9 @@ NodeStatus RobotFindBall::onStart()
         brain->client->setVelocity(0, 0, 0);
         return NodeStatus::SUCCESS;
     }
+
+    _timeLastHeadCmd = brain->get_clock()->now();
+    _headCmdIndex = 0;
     _turnDir = brain->data->ball.yawToRobot > 0 ? 1.0 : -1.0;
 
     return NodeStatus::RUNNING;
@@ -1928,20 +1931,33 @@ NodeStatus RobotFindBall::onRunning()
     if (tmBallPosReliable) {
         Point tmBallPos = {0.0, 0.0, 0.0};
         double minCost = 1e6;
+        bool foundTmBall = false;
         for (int i = 0; i < HL_MAX_NUM_PLAYERS; i++) {
             if (brain->data->tmStatus[i].ballLocationKnown) {
                 double cost = brain->data->tmStatus[i].cost;
                 if (cost < minCost) {
                     minCost = cost;
                     tmBallPos = brain->data->tmStatus[i].ballPosToField;
+                    foundTmBall = true;
                 }
             }
         }
-        double dirToTmBall = atan2(tmBallPos.y - brain->data->robotPoseToField.y,
-                                    tmBallPos.x - brain->data->robotPoseToField.x);
-        double yawErr = toPInPI(dirToTmBall - brain->data->robotPoseToField.theta);
-        if (fabs(yawErr) > 0.3) {
-            brain->client->setVelocity(0, 0, yawErr * 2.0);
+        
+        if (foundTmBall) {
+            GameObject tmBall;
+            tmBall.posToField = tmBallPos;
+            brain->updateRelativePos(tmBall);
+            
+            double yawErr = tmBall.yawToRobot;
+            double pitch = tmBall.pitchToRobot;
+
+            if (fabs(yawErr) > 0.3) {
+                brain->client->setVelocity(0, 0, yawErr * 2.0);
+            } else {
+                brain->client->setVelocity(0, 0, 0);
+            }
+            // 头部指向队友发现的球
+            brain->client->moveHead(pitch, yawErr);
             return NodeStatus::RUNNING;
         }
     }
@@ -1949,16 +1965,16 @@ NodeStatus RobotFindBall::onRunning()
     double vyawLimit;
     getInput("vyaw_limit", vyawLimit);
 
-    double vx = 0;
-    double vy = 0;
-    double vtheta = 0;
-    if (brain->data->ball.range < 0.3)
-    { // 记忆中的球位置太近了, 后退一点
-      // vx = cap(-brain->data->ball.posToRobot.x, 0.2, -0.2);
-      // vy = cap(-brain->data->ball.posToRobot.y, 0.2, -0.2);
-    }
-    // vtheta = _turnDir > 0 ? vyawLimit : -vyawLimit;
     brain->client->setVelocity(0, 0, vyawLimit * _turnDir);
+
+    // 头部扫描: 在旋转过程中切换上下俯仰角, 以扩大搜索范围
+    if (brain->msecsSince(_timeLastHeadCmd) > 800) {
+        _headCmdIndex = (_headCmdIndex + 1) % 2;
+        double pitch = (_headCmdIndex == 0) ? 0.75 : 0.25; 
+        brain->client->moveHead(pitch, 0.0);
+        _timeLastHeadCmd = brain->get_clock()->now();
+    }
+
     return NodeStatus::RUNNING;
 }
 
